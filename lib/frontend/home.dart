@@ -1,7 +1,11 @@
-// lib/screens/home_screen.dart
+// lib/frontend/home.dart
 
 import 'package:flutter/material.dart';
-import 'package:potendays/frontend/create_meeting.dart';
+import 'create_meeting.dart';
+import 'meeting_detail.dart';
+import 'confirmed_calendar.dart';
+import 'notifications.dart';
+import 'settings.dart';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 모임 데이터 모델
@@ -29,7 +33,7 @@ class MeetingModel {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 홈 / 모임 목록 화면
+// 홈 / 모임 목록 화면 — REQ-F-13
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -41,7 +45,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentTabIndex = 0;
 
-  // 샘플 데이터
   final List<MeetingModel> _meetings = const [
     MeetingModel(
       emoji: '🎉',
@@ -68,6 +71,55 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
   ];
 
+  void _openMeetingDetail(MeetingModel meeting) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MeetingDetailScreen(
+          emoji: meeting.emoji,
+          title: meeting.title,
+          participantCount: meeting.participantCount,
+          date: meeting.date,
+          statusText:
+          meeting.status == MeetingStatus.inProgress ? '진행중' : '완료',
+          hasWarning: meeting.hasWarning,
+          warningMessage: meeting.warningMessage,
+        ),
+      ),
+    );
+  }
+
+  void _onBottomTabTapped(int index) {
+    if (index == 0) {
+      setState(() => _currentTabIndex = 0);
+      return;
+    }
+
+    if (index == 1) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ConfirmedCalendarScreen()),
+      );
+      return;
+    }
+
+    if (index == 2) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+      );
+      return;
+    }
+
+    if (index == 3) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+      );
+      return;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -76,35 +128,37 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── 상단 헤더 ──
             _buildHeader(),
-
             const SizedBox(height: 8),
-
-            // ── 모임 카드 리스트 ──
             Expanded(
               child: ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                 itemCount: _meetings.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 12),
                 itemBuilder: (context, index) {
-                  return _MeetingCard(meeting: _meetings[index]);
+                  final meeting = _meetings[index];
+                  return GestureDetector(
+                    onTap: () => _openMeetingDetail(meeting),
+                    child: _MeetingCard(meeting: meeting),
+                  );
                 },
               ),
             ),
           ],
         ),
       ),
-
-      // ── 하단 탭 네비게이션 ──
       bottomNavigationBar: _buildBottomNavBar(),
     );
   }
 
-  // ── 헤더 (내 모임 + 생성 버튼) ──
   Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 16, 0),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 20, 16, 14),
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: Color(0xFF3A3A3C), width: 0.5),
+        ),
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -118,7 +172,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           _CreateButton(
             onPressed: () {
-              // TODO: 모임 생성 화면으로 이동
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CreateMeetingScreen()),
+              );
             },
           ),
         ],
@@ -126,7 +183,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ── 하단 탭 네비게이션 ──
   Widget _buildBottomNavBar() {
     const items = [
       {'icon': Icons.home_rounded, 'label': '홈'},
@@ -151,8 +207,8 @@ class _HomeScreenState extends State<HomeScreen> {
               final isSelected = _currentTabIndex == index;
               return Expanded(
                 child: GestureDetector(
-                  onTap: () => setState(() => _currentTabIndex = index),
                   behavior: HitTestBehavior.opaque,
+                  onTap: () => _onBottomTabTapped(index),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -188,9 +244,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// + 생성 버튼
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class _CreateButton extends StatelessWidget {
   final VoidCallback onPressed;
 
@@ -199,33 +252,21 @@ class _CreateButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return OutlinedButton.icon(
-      onPressed: () {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const CreateMeetingScreen(),
-        ),
-      );
-    },
-    icon: const Icon(Icons.add, size: 18, color: Colors.white),
+      onPressed: onPressed,
+      icon: const Icon(Icons.add, size: 18, color: Colors.white),
       label: const Text(
         '생성',
         style: TextStyle(color: Colors.white, fontSize: 14),
       ),
       style: OutlinedButton.styleFrom(
         side: const BorderSide(color: Colors.white38, width: 1),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       ),
     );
   }
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 모임 카드 위젯
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class _MeetingCard extends StatelessWidget {
   final MeetingModel meeting;
 
@@ -234,28 +275,25 @@ class _MeetingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: const Color(0xFF2C2C2E),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF3A3A3C)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── 상단: 이모지 + 제목 + 뱃지 ──
           Row(
             children: [
-              Text(
-                meeting.emoji,
-                style: const TextStyle(fontSize: 20),
-              ),
-              const SizedBox(width: 8),
+              Text(meeting.emoji, style: const TextStyle(fontSize: 22)),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   meeting.title,
                   style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
                     color: Colors.white,
                   ),
                 ),
@@ -263,21 +301,13 @@ class _MeetingCard extends StatelessWidget {
               _StatusBadge(status: meeting.status),
             ],
           ),
-
-          const SizedBox(height: 6),
-
-          // ── 하단: 참여자 수 · 날짜 ──
+          const SizedBox(height: 8),
           Text(
             '참여자 ${meeting.participantCount}명 · ${meeting.date}',
-            style: const TextStyle(
-              fontSize: 13,
-              color: Colors.white54,
-            ),
+            style: const TextStyle(fontSize: 14, color: Colors.white60),
           ),
-
-          // ── 경고 태그 (일정 미입력 등) ──
           if (meeting.hasWarning && meeting.warningMessage != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             _WarningTag(message: meeting.warningMessage!),
           ],
         ],
@@ -286,9 +316,6 @@ class _MeetingCard extends StatelessWidget {
   }
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 상태 뱃지 (진행중 / 완료)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class _StatusBadge extends StatelessWidget {
   final MeetingStatus status;
 
@@ -297,38 +324,26 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isInProgress = status == MeetingStatus.inProgress;
-
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: isInProgress
-            ? const Color(0xFF4A6CF7).withOpacity(0.2)
-            : const Color(0xFF3A3A3C),
+            ? const Color(0xFF4A6CF7).withOpacity(0.20)
+            : const Color(0xFF2F7D20).withOpacity(0.35),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isInProgress
-              ? const Color(0xFF4A6CF7).withOpacity(0.6)
-              : Colors.transparent,
-          width: 1,
-        ),
       ),
       child: Text(
         isInProgress ? '진행중' : '완료',
         style: TextStyle(
           fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: isInProgress
-              ? const Color(0xFF4A6CF7)
-              : Colors.white54,
+          fontWeight: FontWeight.w700,
+          color: isInProgress ? const Color(0xFF83A5FF) : Colors.lightGreenAccent,
         ),
       ),
     );
   }
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 경고 태그 (일정 미입력 등)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class _WarningTag extends StatelessWidget {
   final String message;
 
@@ -337,21 +352,17 @@ class _WarningTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFB800).withOpacity(0.15),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: const Color(0xFFFFB800).withOpacity(0.4),
-          width: 1,
-        ),
+        color: const Color(0xFFFF9800).withOpacity(0.25),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Text(
         message,
         style: const TextStyle(
+          color: Color(0xFFFFB74D),
           fontSize: 12,
-          color: Color(0xFFFFB800),
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );
