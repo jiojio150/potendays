@@ -10,14 +10,16 @@ import 'frontend/place_candidates.dart';
 import 'frontend/settlement.dart';
 import 'frontend/notifications.dart';
 import 'frontend/confirmed_calendar.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  await dotenv.load(fileName: ".env"); 
+
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-
   runApp(const NTPCApp());
 }
 

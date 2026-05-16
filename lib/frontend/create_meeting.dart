@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../services/database_service.dart';
+import '../services/meeting_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class CreateMeetingScreen extends StatefulWidget {
@@ -13,7 +13,7 @@ class CreateMeetingScreen extends StatefulWidget {
 class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  final DatabaseService _dbService = DatabaseService();
+  final MeetingService _meetingService = MeetingService();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _participantController = TextEditingController();
@@ -79,21 +79,30 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
 
     try {
       final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('로그인이 필요합니다.')));
+        return;
+      }
 
-      if (user != null) {
-        await _dbService.createMeeting(
-          title: _titleController.text,
-          emoji: _emojiController.text.isEmpty ? "📍" : _emojiController.text,
-          creatorUid: user.uid,
-          participants: [user.uid],
-          description: _descriptionController.text,
-          participantCount: int.tryParse(_participantController.text) ?? 1,
-        );
+      await _meetingService.createMeeting(
+        title: _titleController.text.trim(),
+        emoji: _emojiController.text.isEmpty ? "🎉" : _emojiController.text,
+        creatorUid: user.uid,
+        participants: [user.uid],
+        description: _descriptionController.text.trim(),
+        participantCount: int.tryParse(_participantController.text) ?? 1,
+      );
 
-        if (mounted) _showSuccessDialog();
+      if (mounted) {
+        _showSuccessDialog(); 
       }
     } catch (e) {
-      debugPrint("에러 발생: $e");
+      debugPrint("생성 에러: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('모임 생성에 실패했습니다.')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -106,24 +115,15 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF2C2C2E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          '모임 생성 완료! 🎉',
-          style: TextStyle(color: Colors.white, fontSize: 18),
-        ),
-        content: Text(
-          '"${_titleController.text}" 모임이 생성되었습니다.',
-          style: const TextStyle(color: Colors.white60, fontSize: 14),
-        ),
+        title: const Text('모임 생성 완료! 🎉', style: TextStyle(color: Colors.white, fontSize: 18)),
+        content: Text('"${_titleController.text}" 모임이 생성되었습니다.', style: const TextStyle(color: Colors.white60, fontSize: 14)),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
               Navigator.of(context).pop();
             },
-            child: const Text(
-              '확인',
-              style: TextStyle(color: Color(0xFF4A6CF7)),
-            ),
+            child: const Text('확인', style: TextStyle(color: Color(0xFF4A6CF7))),
           ),
         ],
       ),

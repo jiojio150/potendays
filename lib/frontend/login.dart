@@ -1,9 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import '../services/auth_service.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
+
+  static final AuthService _authService = AuthService();
+
+  Future<void> _onGoogleLogin(BuildContext context) async {
+    try {
+      final user = await _authService.signInWithGoogle();
+      
+      if (user != null && context.mounted) {
+        Navigator.pushReplacementNamed(context, '/home');
+      }
+    } catch (e) {
+      debugPrint("로그인 에러: $e");
+
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -14,110 +28,38 @@ class LoginScreen extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 32.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Spacer(flex: 3),
-
-              // ── 앱 로고 ──
-              _AppLogo(),
-
-              const SizedBox(height: 24),
-
-              // ── 앱 이름 ──
-              const Text(
-                'NTPC',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 2,
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              // ── 슬로건 ──
-              const Text(
-                '모임을 더 쉽게',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.white60,
-                ),
-              ),
-
               const Spacer(flex: 2),
 
-              // ── Google 로그인 버튼 ──
+              _AppLogo(),
+              const SizedBox(height: 24),
+              const Text('NTPC', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
+              const Spacer(),
+              
+              const Spacer(flex: 1),
+
               _SocialLoginButton(
-                onPressed: () async {
-                  await _onGoogleLogin(context);
-                },
+                onPressed: () => _onGoogleLogin(context),
                 icon: _GoogleIcon(),
-                label: 'Google로 로그인',
+                label: 'Google로 시작하기',
                 backgroundColor: Colors.white,
                 textColor: Colors.black87,
               ),
-
+              
               const SizedBox(height: 16),
-
-              // ── Kakao 로그인 버튼 ──
               _SocialLoginButton(
-                onPressed: () => _onKakaoLogin(context),
+                onPressed: () {}, 
                 icon: _KakaoIcon(),
-                label: 'Kakao로 로그인',
+                label: '카카오톡으로 시작하기',
                 backgroundColor: const Color(0xFFFEE500),
-                textColor: const Color(0xFF191919),
+                textColor: Colors.black87,
               ),
-
-              const SizedBox(height: 24),
-
-              // ── 안내 문구 ──
-              const Text(
-                '소셜 계정으로 간편하게 시작',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.white38,
-                ),
-              ),
-
               const Spacer(flex: 2),
             ],
           ),
         ),
       ),
     );
-  }
-
-  Future<void> _onGoogleLogin(BuildContext context) async {
-    try {
-      final GoogleSignIn googleSignIn = GoogleSignIn(
-        clientId: "300701135857-p1ol5r8vcepbbn4l7fkrloln62r6u6v0.apps.googleusercontent.com",
-      );
-
-      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
-      
-      if (googleUser == null) return;
-
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-
-      final AuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      await FirebaseAuth.instance.signInWithCredential(credential);
-
-      if (context.mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
-      }
-    } catch (e) {
-      debugPrint("Google 로그인 에러 상세: $e");
-  }
-}
-
-  void _onKakaoLogin(BuildContext context) {
-    // TODO: 실제 Kakao OAuth 연동 후 아래 코드 사용
-    Navigator.pushReplacementNamed(context, '/home');
   }
 }
 

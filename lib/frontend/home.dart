@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../services/database_service.dart';
+import '../services/meeting_service.dart';
 import 'create_meeting.dart';
 import 'meeting_detail.dart';
 import 'confirmed_calendar.dart';
@@ -45,7 +45,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentTabIndex = 0;
-  final DatabaseService _dbService = DatabaseService();
+  final MeetingService _meetingService = MeetingService();
 
   void _showJoinDialog(BuildContext context) {
     final TextEditingController codeController = TextEditingController();
@@ -74,12 +74,14 @@ class _HomeScreenState extends State<HomeScreen> {
               final code = codeController.text.trim();
               if (code.isNotEmpty) {
                 Navigator.pop(context);
-                _joinMeeting(code);
+                
+                _joinMeeting(code); 
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF4A6CF7)),
-              child: const Text('입장'),
+              backgroundColor: const Color(0xFF4A6CF7),
+            ),
+            child: const Text('입장', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -87,34 +89,24 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _joinMeeting(String code) async {
-    try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) return;
+    final result = await _meetingService.joinMeeting(code);
 
-      final result = await _dbService.joinMeeting(code, uid);
+    if (!mounted) return;
 
-      if (!mounted) return;
-
-      if (result == "success") {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('모임에 성공적으로 참여했습니다! 🎉')),
-        );
-      } else if (result == "already_joined") {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('이미 참여 중인 모임입니다. 😊')),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result)),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('참여 중 오류가 발생했습니다.')),
-        );
-      }
+    String message;
+    if (result == "success") {
+      message = "모임에 성공적으로 참여했습니다! 🎉";
+    } else if (result == "already_joined") {
+      message = "이미 참여 중인 모임입니다. 😊";
+    } else if (result == "not_found") {
+      message = "존재하지 않는 모임 코드입니다. 🤔";
+    } else {
+      message = "오류가 발생했습니다. 다시 시도해 주세요.";
     }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   void _openMeetingDetail(MeetingModel meeting, String docID) {
@@ -176,11 +168,12 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF1C1C1E),
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
-        child: _buildHeader(), 
+        // 헤더 안의 글자가 잘리지 않도록 높이를 여유 있게 설정
+        preferredSize: const Size.fromHeight(76),
+        child: _buildHeader(),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: _dbService.getMyMeetings(user?.uid ?? ''),
+        stream: _meetingService.getMyMeetings(user?.uid ?? ''),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -262,16 +255,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 20, 16, 14),
+      // PreferredSize 높이 안에서 텍스트가 잘리지 않도록 세로 패딩을 줄이고 중앙 정렬
+      padding: const EdgeInsets.fromLTRB(20, 8, 16, 10),
+      alignment: Alignment.center,
       decoration: const BoxDecoration(
         border: Border(
           bottom: BorderSide(color: Color(0xFF3A3A3C), width: 0.5),
         ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Text('내 모임', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+          const Text(
+            '내 모임',
+            style: TextStyle(
+              fontSize: 26,
+              height: 1.2,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
           Row(
             children: [
               _JoinButton(onPressed: () => _showJoinDialog(context)),
@@ -279,7 +283,8 @@ class _HomeScreenState extends State<HomeScreen> {
               _CreateButton(onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const CreateMeetingScreen()));
+                  MaterialPageRoute(builder: (_) => const CreateMeetingScreen()),
+                );
               }),
             ],
           ),

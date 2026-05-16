@@ -1,6 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../services/schedule_service.dart';
+import '../models/schedule_model.dart';
 import 'shared_calendar.dart';
 
 class ScheduleInputScreen extends StatefulWidget {
@@ -20,6 +21,7 @@ class ScheduleInputScreen extends StatefulWidget {
 }
 
 class _ScheduleInputScreenState extends State<ScheduleInputScreen> {
+  final ScheduleService _scheduleService = ScheduleService();
   DateTime _focusedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1); 
   Map<String, Set<String>> _selectedDayTimes = {}; 
   int _selectedDay = DateTime.now().day;
@@ -44,40 +46,22 @@ class _ScheduleInputScreenState extends State<ScheduleInputScreen> {
 
   void _loadExistingSchedule() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      setState(() => _isLoading = false);
-      return;
-    }
+    if (uid == null) return;
 
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('meetings')
-          .doc(widget.docID)
-          .collection('availability')
-          .doc(uid)
-          .get();
+      final schedule = await _scheduleService.getUserSchedule(widget.docID, uid);
 
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data() as Map<String, dynamic>;
-        final timeMap = data['timeSelection'] as Map<String, dynamic>? ?? {};
-        
-        Map<String, Set<String>> loadedSelection = {}; 
-        timeMap.forEach((dateKey, times) {
-          if (times is List) {
-            loadedSelection[dateKey] = Set<String>.from(times);
-          }
-        });
-
+      if (schedule != null) {
         setState(() {
-          _selectedDayTimes = loadedSelection;
-          _isLoading = false;
+          _selectedDayTimes = schedule.timeSelection.map(
+            (key, value) => MapEntry(key, Set<String>.from(value)),
+          );
         });
-      } else {
-        setState(() => _isLoading = false);
       }
     } catch (e) {
       debugPrint("데이터 불러오기 오류: $e");
-      setState(() => _isLoading = false);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -93,39 +77,51 @@ class _ScheduleInputScreenState extends State<ScheduleInputScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    String currentUserName = user.displayName ?? user.email?.split('@')[0] ?? '익명';
+    final uid = user.uid;
+    final userName = user.displayName?.trim().isNotEmpty == true
+        ? user.displayName!.trim()
+        : (user.email?.split('@').first ?? '이름 없음');
 
-    Map<String, List<String>> formattedSelection = {};
-    _selectedDayTimes.forEach((dateKey, times) {
-      formattedSelection[dateKey] = times.toList();
-    });
+    setState(() => _isLoading = true);
 
     try {
-      await FirebaseFirestore.instance
-          .collection('meetings')
-          .doc(widget.docID)
-          .collection('availability')
-          .doc(user.uid)
-          .set({
-        'userName': currentUserName,
-        'timeSelection': formattedSelection,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      if (!mounted) return;
-
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => SharedCalendarScreen(
-            docID: widget.docID,
-            meetingTitle: widget.meetingTitle,
-            meetingEmoji: widget.meetingEmoji,
-          ),
-        ),
+      final newSchedule = ScheduleModel(
+        uid: uid,
+        userName: userName,
+        timeSelection: _selectedDayTimes.map((key, value) => MapEntry(key, value.toList())),
       );
+
+      await _scheduleService.saveUserSchedule(
+        docID: widget.docID,
+        schedule: newSchedule,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('일정이 저장되었습니다! 😊')),
+        );
+
+        Navigator.pop(context);
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => SharedCalendarScreen(
+              docID: widget.docID,
+              meetingTitle: widget.meetingTitle,
+              meetingEmoji: widget.meetingEmoji,
+            ),
+          ),
+        );
+      }
     } catch (e) {
-      debugPrint("저장 오류: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('저장 중 오류가 발생했습니다. 😢')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
