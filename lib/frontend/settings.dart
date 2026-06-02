@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -139,6 +140,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildProfileCard() {
+    final User? user = FirebaseAuth.instance.currentUser;
+
+    final String userName = user?.displayName?.trim().isNotEmpty == true
+        ? user!.displayName!.trim()
+        : (user?.email?.split('@').first ?? '사용자');
+
+    final String loginProvider = user?.providerData.isNotEmpty == true
+        ? _getProviderName(user!.providerData.first.providerId)
+        : '계정';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
@@ -163,22 +174,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(width: 14),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '지연',
-                  style: TextStyle(
+                  userName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                SizedBox(height: 6),
+                const SizedBox(height: 6),
                 Text(
-                  'Google 계정으로 로그인됨',
-                  style: TextStyle(
+                  '$loginProvider 계정으로 로그인됨',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
                     color: Colors.white54,
                     fontSize: 13,
                   ),
@@ -193,6 +208,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  String _getProviderName(String providerId) {
+    switch (providerId) {
+      case 'google.com':
+        return 'Google';
+      case 'password':
+        return '이메일';
+      case 'phone':
+        return '전화번호';
+      default:
+        return '소셜';
+    }
   }
 
   Widget _buildSectionTitle(String title) {
