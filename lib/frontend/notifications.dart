@@ -6,6 +6,33 @@ import 'package:flutter/material.dart';
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
 
+  static const List<NotificationItem> notifications = [
+    NotificationItem(
+      section: '오늘',
+      color: Color(0xFF4A90E2),
+      title: '🗓 모임 일정 알림',
+      message: '종강 파티가 2일 후입니다 (4월 4일 오전)',
+      time: '방금 전',
+      type: NotificationType.schedule,
+    ),
+    NotificationItem(
+      section: '오늘',
+      color: Color(0xFFFFB020),
+      title: '💸 정산 요청',
+      message: '팀 회식 정산 입력이 필요합니다',
+      time: '1시간 전',
+      type: NotificationType.settlement,
+    ),
+    NotificationItem(
+      section: '어제',
+      color: Color(0xFFFFD54F),
+      title: '🔔 리마인드',
+      message: '게임 모임 일정이 아직 미입력 상태입니다',
+      time: '어제 오후 3시',
+      type: NotificationType.reminder,
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -17,31 +44,48 @@ class NotificationsScreen extends StatelessWidget {
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(22, 20, 22, 28),
-                children: const [
+                children: [
                   _SectionLabel(label: '오늘'),
-                  SizedBox(height: 12),
-                  _NotificationCard(
-                    color: Color(0xFF4A90E2),
-                    title: '🗓 모임 일정 알림',
-                    message: '종강 파티가 2일 후입니다 (4월 4일 오전)',
-                    time: '방금 전',
-                  ),
-                  SizedBox(height: 14),
-                  _NotificationCard(
-                    color: Color(0xFFFFB020),
-                    title: '💸 정산 요청',
-                    message: '팀 회식 정산 입력이 필요합니다',
-                    time: '1시간 전',
-                  ),
-                  SizedBox(height: 28),
-                  _SectionLabel(label: '어제'),
-                  SizedBox(height: 12),
-                  _NotificationCard(
-                    color: Color(0xFFFFB020),
-                    title: '🔔 리마인드',
-                    message: '게임 모임 일정이 아직 미입력 상태입니다',
-                    time: '어제 오후 3시',
-                  ),
+                  const SizedBox(height: 12),
+
+                  ...notifications
+                      .where((notification) => notification.section == '오늘')
+                      .map(
+                        (notification) => Padding(
+                          padding: const EdgeInsets.only(bottom: 14),
+                          child: _NotificationCard(
+                            color: notification.color,
+                            title: notification.title,
+                            message: notification.message,
+                            time: notification.time,
+                            onTap: () {
+                              _handleNotificationTap(context, notification);
+                            },
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 14),
+
+                      const _SectionLabel(label: '어제'),
+                      const SizedBox(height: 12),
+
+                      ...notifications
+                        .where((notification) => notification.section == '어제')
+                        .map(
+                          (notification) => Padding(
+                            padding: const EdgeInsets.only(bottom: 14),
+                            child: _NotificationCard(
+                              color: notification.color,
+                              title: notification.title,
+                              message: notification.message,
+                              time: notification.time,
+                              onTap: () {
+                                _handleNotificationTap(context, notification);
+                              },
+                            ),
+                          ),
+                        ),
                 ],
               ),
             ),
@@ -49,6 +93,23 @@ class NotificationsScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  void _handleNotificationTap(
+    BuildContext context,
+    NotificationItem notification,
+  ) {
+    switch (notification.type) {
+      case NotificationType.schedule:
+        Navigator.pushNamed(context, '/confirmed-calendar');
+        break;
+      case NotificationType.settlement:
+        Navigator.pushNamed(context, '/settlement');
+        break;
+      case NotificationType.reminder:
+        Navigator.pushNamed(context, '/schedule-input');
+        break;
+    }
   }
 
   Widget _buildHeader(BuildContext context) {
@@ -95,18 +156,22 @@ class _NotificationCard extends StatelessWidget {
   final String title;
   final String message;
   final String time;
+  final VoidCallback? onTap;
 
   const _NotificationCard({
     required this.color,
     required this.title,
     required this.message,
     required this.time,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
         color: const Color(0xFF242424),
         borderRadius: BorderRadius.circular(12),
       ),
@@ -153,15 +218,36 @@ class _NotificationCard extends StatelessWidget {
                       style: const TextStyle(
                         color: Colors.white54,
                         fontSize: 13,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
+
+class NotificationItem {
+  final String section;
+  final Color color;
+  final String title;
+  final String message;
+  final String time;
+  final NotificationType type;
+
+  const NotificationItem({
+    required this.section,
+    required this.color,
+    required this.title,
+    required this.message,
+    required this.time,
+    required this.type,
+  });
+}
+
+enum NotificationType { schedule, settlement, reminder }
