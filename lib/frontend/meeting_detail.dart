@@ -4,6 +4,7 @@ import 'shared_calendar.dart';
 import 'place_candidates.dart';
 import 'settlement.dart';
 import 'package:flutter/services.dart';
+import 'settlement_history.dart';
 
 // 홈에서 모임 카드를 눌렀을 때 들어오는 모임별 기능 허브 화면
 class MeetingDetailScreen extends StatelessWidget {
@@ -113,9 +114,28 @@ class MeetingDetailScreen extends StatelessWidget {
                           context,
                           MaterialPageRoute(
                             builder: (_) => SettlementScreen(
+                              meetingId: docID,
                               meetingTitle: title,
                               meetingEmoji: emoji,
                               participantCount: participantCount,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+
+                    _FeatureCard(
+                      icon: Icons.receipt_long_rounded,
+                      title: '정산 내역',
+                      description: '이 모임에서 등록된 정산 내역을 확인합니다.',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SettlementHistoryScreen(
+                              meetingId: docID,
+                              meetingTitle: title,
+                              meetingEmoji: emoji,
                             ),
                           ),
                         );
