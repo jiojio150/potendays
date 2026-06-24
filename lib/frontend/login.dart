@@ -11,18 +11,17 @@ class LoginScreen extends StatelessWidget {
   Future<void> _onGoogleLogin(BuildContext context) async {
     try {
       final user = await _authService.signInWithGoogle();
-      
+
       if (user != null && context.mounted) {
         Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {
       debugPrint("로그인 에러: $e");
-
     }
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  //  카카오 로그인 함수
+  // 카카오 로그인 함수
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Future<void> signInWithKakao(BuildContext context) async {
     try {
@@ -80,9 +79,17 @@ class LoginScreen extends StatelessWidget {
 
               _AppLogo(),
               const SizedBox(height: 24),
-              const Text('NTPC', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
+
+              const Text(
+                'NTPC',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+
               const Spacer(),
-              
               const Spacer(flex: 1),
 
               _SocialLoginButton(
@@ -92,15 +99,19 @@ class LoginScreen extends StatelessWidget {
                 backgroundColor: Colors.white,
                 textColor: Colors.black87,
               ),
-              
+
               const SizedBox(height: 16),
+
               _SocialLoginButton(
-                onPressed: () {signInWithKakao(context);}, 
+                onPressed: () {
+                  signInWithKakao(context);
+                },
                 icon: _KakaoIcon(),
                 label: '카카오톡으로 시작하기',
                 backgroundColor: const Color(0xFFFEE500),
                 textColor: Colors.black87,
               ),
+
               const Spacer(flex: 2),
             ],
           ),
@@ -197,7 +208,7 @@ class _SocialLoginButton extends StatelessWidget {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Google 아이콘 (SVG 대신 텍스트 기반)
+// Google 아이콘
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class _GoogleIcon extends StatelessWidget {
   @override
