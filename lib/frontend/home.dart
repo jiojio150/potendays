@@ -539,6 +539,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 하단 네비게이션 바 (필요 시 메뉴 추가)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ignore: unused_element
   Widget _buildBottomNav() {
     return BottomNavigationBar(
       backgroundColor: const Color(0xFF1C1C1E),
@@ -753,8 +754,8 @@ class _StatusBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: isInProgress
-            ? const Color(0xFF4A6CF7).withOpacity(0.20)
-            : const Color(0xFF2F7D20).withOpacity(0.35),
+            ? const Color(0xFF4A6CF7).withValues(alpha: 0.20)
+            : const Color(0xFF2F7D20).withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
