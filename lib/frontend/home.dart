@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart'
+    hide User;
+import '../services/local_notification_service.dart';
 import '../services/meeting_service.dart';
 import 'create_meeting.dart';
 import 'meeting_detail.dart';
 import 'confirmed_calendar.dart';
 import 'notifications.dart';
 import 'settings.dart';
+import 'qr_join.dart';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 모임 데이터 모델
@@ -46,42 +50,195 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentTabIndex = 0;
   final MeetingService _meetingService = MeetingService();
+  String? _lastReminderSyncSignature;
+
+  bool _isCheckingKakaoLogin = false;
+  bool _isKakaoLoggedIn = false;
+  String _kakaoDisplayName = '카카오 사용자';
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (FirebaseAuth.instance.currentUser != null) {
+      LocalNotificationService.instance.syncCurrentUserMeetings();
+    } else {
+      _loadKakaoLoginState();
+    }
+  }
+
+  Future<void> _loadKakaoLoginState() async {
+    setState(() => _isCheckingKakaoLogin = true);
+
+    try {
+      final bool hasToken = await AuthApi.instance.hasToken();
+
+      if (!hasToken) {
+        if (!mounted) return;
+
+        setState(() {
+          _isKakaoLoggedIn = false;
+          _isCheckingKakaoLogin = false;
+        });
+        return;
+      }
+
+      final kakaoUser = await UserApi.instance.me();
+      final String? nickname =
+          kakaoUser.kakaoAccount?.profile?.nickname;
+
+      if (!mounted) return;
+
+      setState(() {
+        _isKakaoLoggedIn = true;
+        _kakaoDisplayName =
+            nickname?.trim().isNotEmpty == true
+                ? nickname!.trim()
+                : '카카오 사용자';
+        _isCheckingKakaoLogin = false;
+      });
+    } catch (error) {
+      debugPrint('카카오 로그인 상태 확인 오류: $error');
+
+      if (!mounted) return;
+
+      setState(() {
+        _isKakaoLoggedIn = false;
+        _isCheckingKakaoLogin = false;
+      });
+    }
+  }
+
+  bool _requireFirebaseLogin() {
+    if (FirebaseAuth.instance.currentUser != null) {
+      return true;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          '카카오 로그인은 완료되었지만 Firebase 계정과 연결되지 않아 '
+          '현재 모임 생성·참여·캘린더·알림 기능은 Google 로그인에서만 사용할 수 있습니다.',
+        ),
+      ),
+    );
+
+    return false;
+  }
+
+  void _syncLocalReminders(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> documents,
+  ) {
+    final String signature = documents.map((document) {
+      final Map<String, dynamic> data = document.data();
+      return '${document.id}|'
+          '${data['updatedAt']}|'
+          '${data['confirmedDateTime']}|'
+          '${data['reminderEnabled']}|'
+          '${data['settlementCompleted']}';
+    }).join('||');
+
+    if (_lastReminderSyncSignature == signature) return;
+    _lastReminderSyncSignature = signature;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await LocalNotificationService.instance
+            .syncMeetingDocuments(documents);
+      } catch (error) {
+        debugPrint('로컬 리마인드 동기화 오류: $error');
+      }
+    });
+  }
 
   void _showJoinDialog(BuildContext context) {
+    if (!_requireFirebaseLogin()) return;
+
     final TextEditingController codeController = TextEditingController();
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: const Color(0xFF2C2C2E),
-        title: const Text('모임 참여하기', style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: codeController,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: '초대 코드를 입력하세요',
-            hintStyle: TextStyle(color: Colors.white38),
-            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF3A3A3C))),
-          ),
+        title: const Text(
+          '모임 참여하기',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: codeController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: '초대 코드 또는 링크를 붙여넣으세요',
+                hintStyle: TextStyle(color: Colors.white38),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(
+                    color: Color(0xFF3A3A3C),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(
+                    color: Color(0xFF4A6CF7),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  final String? scannedValue =
+                      await Navigator.push<String>(
+                    dialogContext,
+                    MaterialPageRoute(
+                      builder: (_) => const QrJoinScreen(),
+                    ),
+                  );
+
+                  if (scannedValue == null ||
+                      scannedValue.trim().isEmpty) {
+                    return;
+                  }
+
+                  if (dialogContext.mounted) {
+                    Navigator.pop(dialogContext);
+                  }
+
+                  _joinMeeting(scannedValue);
+                },
+                icon: const Icon(Icons.qr_code_scanner_rounded),
+                label: const Text('QR 코드 스캔'),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('취소', style: TextStyle(color: Colors.white54)),
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text(
+              '취소',
+              style: TextStyle(color: Colors.white54),
+            ),
           ),
           ElevatedButton(
-            onPressed: () async {
-              final code = codeController.text.trim();
-              if (code.isNotEmpty) {
-                Navigator.pop(context);
-                
-                _joinMeeting(code); 
-              }
+            onPressed: () {
+              final String input = codeController.text.trim();
+
+              if (input.isEmpty) return;
+
+              Navigator.pop(dialogContext);
+              _joinMeeting(input);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF4A6CF7),
             ),
-            child: const Text('입장', style: TextStyle(color: Colors.white)),
+            child: const Text(
+              '참여',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -89,6 +246,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _joinMeeting(String code) async {
+    if (!_requireFirebaseLogin()) return;
+
     final result = await _meetingService.joinMeeting(code);
 
     if (!mounted) return;
@@ -107,6 +266,18 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  String _formatConfirmedDate(Timestamp? timestamp) {
+    if (timestamp == null) return '미정';
+
+    final DateTime value = timestamp.toDate();
+    final String month = value.month.toString().padLeft(2, '0');
+    final String day = value.day.toString().padLeft(2, '0');
+    final String hour = value.hour.toString().padLeft(2, '0');
+    final String minute = value.minute.toString().padLeft(2, '0');
+
+    return '${value.year}.$month.$day $hour:$minute';
   }
 
   void _openMeetingDetail(MeetingModel meeting, String docID) {
@@ -131,6 +302,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onBottomTabTapped(int index) {
     if (index == 0) {
       setState(() => _currentTabIndex = 0);
+      return;
+    }
+
+    if ((index == 1 || index == 2) && !_requireFirebaseLogin()) {
       return;
     }
 
@@ -163,43 +338,64 @@ class _HomeScreenState extends State<HomeScreen> {
   
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    final User? firebaseUser = FirebaseAuth.instance.currentUser;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF1C1C1E),
-      appBar: PreferredSize(
-        // 헤더 안의 글자가 잘리지 않도록 높이를 여유 있게 설정
-        preferredSize: const Size.fromHeight(76),
-        child: _buildHeader(),
-      ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _meetingService.getMyMeetings(user?.uid ?? ''),
+    Widget body;
+
+    if (firebaseUser != null) {
+      body = StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: _meetingService.getMyMeetings(firebaseUser.uid),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          if (snapshot.hasError) {
+            debugPrint('모임 목록 조회 오류: ${snapshot.error}');
+
             return const Center(
-              child: Text("참여 중인 모임이 없습니다.", style: TextStyle(color: Colors.white54)),
+              child: Text(
+                '모임 정보를 불러오지 못했습니다.',
+                style: TextStyle(color: Colors.white54),
+              ),
             );
           }
 
-          final docs = snapshot.data!.docs;
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            _syncLocalReminders(
+              const <QueryDocumentSnapshot<Map<String, dynamic>>>[],
+            );
+
+            return const Center(
+              child: Text(
+                '참여 중인 모임이 없습니다.',
+                style: TextStyle(color: Colors.white54),
+              ),
+            );
+          }
+
+          final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs =
+              snapshot.data!.docs;
+
+          _syncLocalReminders(docs);
 
           return ListView.separated(
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
             itemCount: docs.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 16),
+            separatorBuilder: (context, index) =>
+                const SizedBox(height: 16),
             itemBuilder: (context, index) {
-              final data = docs[index].data() as Map<String, dynamic>;
+              final Map<String, dynamic> data = docs[index].data();
               final String docID = docs[index].id;
-              
-              final meeting = MeetingModel(
+
+              final MeetingModel meeting = MeetingModel(
                 emoji: data['emoji'] ?? '📍',
                 title: data['title'] ?? '이름 없는 모임',
-                participantCount: (data['participants'] as List?)?.length ?? 1,
-                date: '미정',
+                participantCount:
+                    (data['participants'] as List?)?.length ?? 1,
+                date: _formatConfirmedDate(
+                  data['confirmedDateTime'] as Timestamp?,
+                ),
                 status: MeetingStatus.inProgress,
               );
 
@@ -214,9 +410,110 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           );
         },
+      );
+    } else if (_isCheckingKakaoLogin) {
+      body = const Center(child: CircularProgressIndicator());
+    } else if (_isKakaoLoggedIn) {
+      body = _buildKakaoOnlyHome(_kakaoDisplayName);
+    } else {
+      body = _buildLoginExpiredHome();
+    }
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF1C1C1E),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(76),
+        child: _buildHeader(),
       ),
-      floatingActionButton: _buildFab(context),
-      bottomNavigationBar: _buildBottomNavBar(), 
+      body: body,
+      floatingActionButton:
+          firebaseUser != null ? _buildFab(context) : null,
+      bottomNavigationBar: _buildBottomNavBar(),
+    );
+  }
+
+  Widget _buildKakaoOnlyHome(String displayName) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: const Color(0xFF2C2C2E),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.check_circle_rounded,
+                color: Color(0xFFFEE500),
+                size: 52,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '$displayName님, 카카오 로그인이 완료되었습니다.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                '카카오 계정은 현재 Firebase 계정과 연결되지 않아 '
+                '모임 생성·참여·일정 기능은 아직 사용할 수 없습니다.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white60,
+                  fontSize: 14,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoginExpiredHome() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.login_rounded,
+              color: Colors.white54,
+              size: 48,
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              '로그인 정보를 확인할 수 없습니다.',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 14),
+            FilledButton(
+              onPressed: () {
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  '/',
+                  (route) => false,
+                );
+              },
+              child: const Text('로그인 화면으로 이동'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -226,6 +523,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildFab(BuildContext context) {
     return FloatingActionButton.extended(
       onPressed: () {
+        if (!_requireFirebaseLogin()) return;
+
         Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const CreateMeetingScreen()),
@@ -240,6 +539,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 하단 네비게이션 바 (필요 시 메뉴 추가)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ignore: unused_element
   Widget _buildBottomNav() {
     return BottomNavigationBar(
       backgroundColor: const Color(0xFF1C1C1E),
@@ -280,12 +580,18 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _JoinButton(onPressed: () => _showJoinDialog(context)),
               const SizedBox(width: 8),
-              _CreateButton(onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const CreateMeetingScreen()),
-                );
-              }),
+              _CreateButton(
+                onPressed: () {
+                  if (!_requireFirebaseLogin()) return;
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const CreateMeetingScreen(),
+                    ),
+                  );
+                },
+              ),
             ],
           ),
         ],
@@ -448,8 +754,8 @@ class _StatusBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: isInProgress
-            ? const Color(0xFF4A6CF7).withOpacity(0.20)
-            : const Color(0xFF2F7D20).withOpacity(0.35),
+            ? const Color(0xFF4A6CF7).withValues(alpha: 0.20)
+            : const Color(0xFF2F7D20).withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(

@@ -344,7 +344,8 @@ class _SharedCalendarScreenState extends State<SharedCalendarScreen> {
         final double ratio = totalParticipants > 0 ? dayMaxVotes / totalParticipants : 0;
 
         final Color cellColor = ratio > 0
-            ? const Color(0xFF4A6CF7).withOpacity(ratio.clamp(0.1, 1.0))
+            ? const Color(0xFF4A6CF7)
+                .withValues(alpha: ratio.clamp(0.1, 1.0).toDouble())
             : const Color(0xFF3A3A3C);
 
         return GestureDetector(

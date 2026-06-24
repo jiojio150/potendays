@@ -1,5 +1,9 @@
-import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart'
+    hide User;
+
+import '../services/local_notification_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -9,9 +13,210 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _scheduleNotification = true;
-  bool _settlementNotification = true;
-  bool _reminderNotification = true;
+  bool _scheduleNotifications = true;
+  bool _settlementNotifications = true;
+  bool _longTermReminders = true;
+
+  bool _isLoadingProfile = true;
+  bool _isLoggingOut = false;
+
+  String _displayName = '사용자';
+  String _email = '';
+  String? _photoUrl;
+  String _loginProvider = '로그인 정보 없음';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final User? firebaseUser = FirebaseAuth.instance.currentUser;
+
+    if (firebaseUser != null) {
+      if (!mounted) return;
+
+      setState(() {
+        _displayName = firebaseUser.displayName?.trim().isNotEmpty == true
+            ? firebaseUser.displayName!.trim()
+            : '사용자';
+        _email = firebaseUser.email ?? '';
+        _photoUrl = firebaseUser.photoURL;
+        _loginProvider = _firebaseProviderName(firebaseUser);
+        _isLoadingProfile = false;
+      });
+
+      return;
+    }
+
+    try {
+      if (await AuthApi.instance.hasToken()) {
+        final kakaoUser = await UserApi.instance.me();
+        final String? nickname =
+            kakaoUser.kakaoAccount?.profile?.nickname;
+        final String? profileImage =
+            kakaoUser.kakaoAccount?.profile?.profileImageUrl;
+        final String? email = kakaoUser.kakaoAccount?.email;
+
+        if (!mounted) return;
+
+        setState(() {
+          _displayName =
+              nickname?.trim().isNotEmpty == true ? nickname!.trim() : '카카오 사용자';
+          _email = email ?? '';
+          _photoUrl = profileImage;
+          _loginProvider = '카카오 로그인';
+          _isLoadingProfile = false;
+        });
+
+        return;
+      }
+    } catch (error) {
+      debugPrint('카카오 사용자 정보 확인 오류: $error');
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _displayName = '사용자';
+      _email = '';
+      _photoUrl = null;
+      _loginProvider = '로그인 정보 없음';
+      _isLoadingProfile = false;
+    });
+  }
+
+  String _firebaseProviderName(User user) {
+    final List<UserInfo> providers = user.providerData;
+
+    if (providers.any(
+      (UserInfo info) => info.providerId == GoogleAuthProvider.PROVIDER_ID,
+    )) {
+      return 'Google 로그인';
+    }
+
+    return 'Firebase 로그인';
+  }
+
+
+  Future<void> _requestLocalNotificationPermission() async {
+    final LocalNotificationService service =
+        LocalNotificationService.instance;
+
+    if (!service.isSupported) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            '웹에서는 로컬 예약 알림을 지원하지 않습니다. '
+            'Android 또는 iOS 앱에서 설정해 주세요.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final bool granted = await service.requestPermissions();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          granted
+              ? '기기 알림 권한이 허용되었습니다.'
+              : '알림 권한이 허용되지 않았습니다. '
+                  '기기 설정에서 알림 권한을 확인해 주세요.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _logout() async {
+    if (_isLoggingOut) return;
+
+    setState(() => _isLoggingOut = true);
+
+    try {
+      if (FirebaseAuth.instance.currentUser != null) {
+        await FirebaseAuth.instance.signOut();
+      }
+
+      try {
+        if (await AuthApi.instance.hasToken()) {
+          await UserApi.instance.logout();
+        }
+      } catch (error) {
+        debugPrint('카카오 로그아웃 확인 오류: $error');
+      }
+
+      if (!mounted) return;
+
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/',
+        (Route<dynamic> route) => false,
+      );
+    } catch (error) {
+      debugPrint('로그아웃 오류: $error');
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('로그아웃 중 오류가 발생했습니다.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoggingOut = false);
+      }
+    }
+  }
+
+  Future<void> _showLogoutDialog() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF2C2C2E),
+          title: const Text(
+            '로그아웃',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: const Text(
+            '현재 계정에서 로그아웃할까요?',
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text(
+                '취소',
+                style: TextStyle(color: Colors.white54),
+              ),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFFF453A),
+              ),
+              child: const Text(
+                '로그아웃',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      await _logout();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,87 +225,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _buildHeader(context),
+            _buildHeader(),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildProfileCard(),
-                    const SizedBox(height: 24),
-                    _buildSectionTitle('계정'),
-                    const SizedBox(height: 10),
-                    _SettingsCard(
+              child: _isLoadingProfile
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
                       children: [
-                        _SettingsMenuItem(
-                          icon: Icons.person_rounded,
-                          title: '프로필 관리',
-                          subtitle: '닉네임과 프로필 정보를 수정합니다.',
-                          onTap: () => _showComingSoon('프로필 관리'),
+                        _buildProfileCard(),
+                        const SizedBox(height: 22),
+                        _buildSectionTitle('알림 설정'),
+                        const SizedBox(height: 10),
+                        _buildNotificationCard(),
+                        const SizedBox(height: 22),
+                        _buildSectionTitle('계정'),
+                        const SizedBox(height: 10),
+                        _buildAccountCard(),
+                        const SizedBox(height: 28),
+                        SizedBox(
+                          height: 52,
+                          child: OutlinedButton.icon(
+                            onPressed:
+                                _isLoggingOut ? null : _showLogoutDialog,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFFFF6B63),
+                              side: const BorderSide(
+                                color: Color(0xFFFF453A),
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            icon: _isLoggingOut
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.logout_rounded),
+                            label: Text(
+                              _isLoggingOut ? '로그아웃 중...' : '로그아웃',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
                         ),
-                        const _SettingsDivider(),
-                        _SettingsMenuItem(
-                          icon: Icons.group_rounded,
-                          title: '내 모임 관리',
-                          subtitle: '참여 중인 모임과 완료된 모임을 확인합니다.',
-                          onTap: () => Navigator.pop(context),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Poten Day',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white24,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 24),
-                    _buildSectionTitle('알림 설정'),
-                    const SizedBox(height: 10),
-                    _SettingsCard(
-                      children: [
-                        _SettingsSwitchItem(
-                          icon: Icons.calendar_month_rounded,
-                          title: '일정 알림',
-                          subtitle: '모임 일정 임박 시 알림을 받습니다.',
-                          value: _scheduleNotification,
-                          onChanged: (value) {
-                            setState(() => _scheduleNotification = value);
-                          },
-                        ),
-                        const _SettingsDivider(),
-                        _SettingsSwitchItem(
-                          icon: Icons.payments_rounded,
-                          title: '정산 알림',
-                          subtitle: '정산 요청과 미정산 알림을 받습니다.',
-                          value: _settlementNotification,
-                          onChanged: (value) {
-                            setState(() => _settlementNotification = value);
-                          },
-                        ),
-                        const _SettingsDivider(),
-                        _SettingsSwitchItem(
-                          icon: Icons.notifications_active_rounded,
-                          title: '리마인드 알림',
-                          subtitle: '일정 미입력, 장소 미투표 상태를 알려줍니다.',
-                          value: _reminderNotification,
-                          onChanged: (value) {
-                            setState(() => _reminderNotification = value);
-                          },
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    _buildSectionTitle('앱 설정'),
-                    const SizedBox(height: 10),
-                    _SettingsCard(
-                      children: [                                                _SettingsMenuItem(
-                        icon: Icons.info_outline_rounded,
-                        title: '앱 정보',
-                        subtitle: 'NTPC v1.0.0',
-                        onTap: () => _showAppInfo(),
-                      ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    _buildLogoutButton(),
-                  ],
-                ),
-              ),
             ),
           ],
         ),
@@ -108,208 +291,203 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(4, 12, 20, 12),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 16),
       decoration: const BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: Color(0xFF3A3A3C), width: 0.5),
+          bottom: BorderSide(
+            color: Color(0xFF3A3A3C),
+            width: 0.5,
+          ),
         ),
       ),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: () => Navigator.pop(context),
-            icon: const Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: Colors.white,
-              size: 20,
-            ),
-          ),
-          const Text(
-            '설정',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
+      child: const Text(
+        '설정',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }
 
   Widget _buildProfileCard() {
-    final User? user = FirebaseAuth.instance.currentUser;
-
-    final String userName = user?.displayName?.trim().isNotEmpty == true
-        ? user!.displayName!.trim()
-        : (user?.email?.split('@').first ?? '사용자');
-
-    final String loginProvider = user?.providerData.isNotEmpty == true
-        ? _getProviderName(user!.providerData.first.providerId)
-        : '계정';
-
     return Container(
-      width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: const Color(0xFF2C2C2E),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(17),
         border: Border.all(color: const Color(0xFF3A3A3C)),
       ),
       child: Row(
         children: [
-          Container(
-            width: 58,
-            height: 58,
-            decoration: BoxDecoration(
-              color: const Color(0xFF4A6CF7).withOpacity(0.18),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: const Icon(
-              Icons.person_rounded,
-              color: Color(0xFF4A6CF7),
-              size: 34,
-            ),
-          ),
+          _buildProfileImage(),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  userName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  _displayName,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 20,
+                    fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 6),
+                if (_email.isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    _email,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 5),
                 Text(
-                  '$loginProvider 계정으로 로그인됨',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  _loginProvider,
                   style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 13,
+                    color: Color(0xFF8AA4FF),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
-          ),
-          const Icon(
-            Icons.chevron_right_rounded,
-            color: Colors.white30,
           ),
         ],
       ),
     );
   }
 
-  String _getProviderName(String providerId) {
-    switch (providerId) {
-      case 'google.com':
-        return 'Google';
-      case 'password':
-        return '이메일';
-      case 'phone':
-        return '전화번호';
-      default:
-        return '소셜';
+  Widget _buildProfileImage() {
+    final String? photoUrl = _photoUrl;
+
+    if (photoUrl != null && photoUrl.trim().isNotEmpty) {
+      return CircleAvatar(
+        radius: 30,
+        backgroundColor: const Color(0xFF3A3A3C),
+        backgroundImage: NetworkImage(photoUrl),
+        onBackgroundImageError: (_, __) {},
+      );
     }
+
+    final String initial =
+        _displayName.trim().isEmpty ? '?' : _displayName.trim()[0];
+
+    return CircleAvatar(
+      radius: 30,
+      backgroundColor: const Color(0xFF4A6CF7),
+      child: Text(
+        initial,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 22,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNotificationCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF2C2C2E),
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: const Color(0xFF3A3A3C)),
+      ),
+      child: Column(
+        children: [
+          _SettingsMenuItem(
+            icon: Icons.notifications_active_rounded,
+            title: '기기 알림 권한',
+            subtitle: '일정과 정산 리마인드를 표시할 수 있도록 알림 권한을 요청합니다.',
+            onTap: _requestLocalNotificationPermission,
+          ),
+          const _SettingsDivider(),
+          _SettingsSwitchItem(
+            icon: Icons.event_rounded,
+            title: '일정 알림',
+            subtitle: '확정된 모임 일정이 가까워지면 알려줍니다.',
+            value: _scheduleNotifications,
+            onChanged: (bool value) {
+              setState(() => _scheduleNotifications = value);
+            },
+          ),
+          const _SettingsDivider(),
+          _SettingsSwitchItem(
+            icon: Icons.payments_rounded,
+            title: '정산 알림',
+            subtitle: '모임 이후 정산이 필요할 때 알려줍니다.',
+            value: _settlementNotifications,
+            onChanged: (bool value) {
+              setState(() => _settlementNotifications = value);
+            },
+          ),
+          const _SettingsDivider(),
+          _SettingsSwitchItem(
+            icon: Icons.history_toggle_off_rounded,
+            title: '장기간 미모임 리마인드',
+            subtitle: '설정 기간 동안 모임이 없으면 알려줍니다.',
+            value: _longTermReminders,
+            onChanged: (bool value) {
+              setState(() => _longTermReminders = value);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAccountCard() {
+    final User? user = FirebaseAuth.instance.currentUser;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF2C2C2E),
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: const Color(0xFF3A3A3C)),
+      ),
+      child: Column(
+        children: [
+          _ReadOnlyInfoRow(
+            icon: Icons.badge_outlined,
+            label: '사용자 이름',
+            value: _displayName,
+          ),
+          const _SettingsDivider(),
+          _ReadOnlyInfoRow(
+            icon: Icons.login_rounded,
+            label: '로그인 방식',
+            value: _loginProvider,
+          ),
+          if (user != null) ...[
+            const _SettingsDivider(),
+            _ReadOnlyInfoRow(
+              icon: Icons.fingerprint_rounded,
+              label: '사용자 ID',
+              value: user.uid,
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
       style: const TextStyle(
-        color: Colors.white,
-        fontSize: 18,
+        color: Colors.white70,
+        fontSize: 15,
         fontWeight: FontWeight.bold,
       ),
-    );
-  }
-
-  Widget _buildLogoutButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 52,
-      child: OutlinedButton(
-        onPressed: () {
-          Navigator.pushNamedAndRemoveUntil(
-            context,
-            '/login',
-                (route) => false,
-          );
-        },
-        style: OutlinedButton.styleFrom(
-          side: const BorderSide(color: Color(0xFFFF453A), width: 1),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-        ),
-        child: const Text(
-          '로그아웃',
-          style: TextStyle(
-            color: Color(0xFFFF453A),
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showComingSoon(String title) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$title 기능은 추후 구현 예정입니다.')),
-    );
-  }
-
-  void _showAppInfo() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF2C2C2E),
-          title: const Text(
-            'NTPC',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-          ),
-          content: const Text(
-            '모임 생성, 일정 조율, 장소 투표, 정산을 한 번에 관리하는 모임 관리 앱입니다.\n\nVersion 1.0.0',
-            style: TextStyle(color: Colors.white70, height: 1.4),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('확인'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _SettingsCard extends StatelessWidget {
-  final List<Widget> children;
-
-  const _SettingsCard({required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF2C2C2E),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF3A3A3C)),
-      ),
-      child: Column(children: children),
     );
   }
 }
@@ -329,43 +507,51 @@ class _SettingsMenuItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            _SettingsIcon(icon: icon),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(17),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 15,
+          ),
+          child: Row(
+            children: [
+              _SettingsIcon(icon: icon),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      color: Colors.white54,
-                      fontSize: 13,
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Colors.white38,
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const Icon(
-              Icons.chevron_right_rounded,
-              color: Colors.white30,
-            ),
-          ],
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Colors.white30,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -390,11 +576,11 @@ class _SettingsSwitchItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
       child: Row(
         children: [
           _SettingsIcon(icon: icon),
-          const SizedBox(width: 14),
+          const SizedBox(width: 13),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -403,17 +589,17 @@ class _SettingsSwitchItem extends StatelessWidget {
                   title,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
                   style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 13,
-                    height: 1.3,
+                    color: Colors.white38,
+                    fontSize: 12,
+                    height: 1.35,
                   ),
                 ),
               ],
@@ -422,7 +608,57 @@ class _SettingsSwitchItem extends StatelessWidget {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: const Color(0xFF4A6CF7),
+            activeColor: const Color(0xFF8AA4FF),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReadOnlyInfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _ReadOnlyInfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 15,
+      ),
+      child: Row(
+        children: [
+          _SettingsIcon(icon: icon),
+          const SizedBox(width: 13),
+          SizedBox(
+            width: 88,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
@@ -438,16 +674,16 @@ class _SettingsIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 42,
-      height: 42,
+      width: 38,
+      height: 38,
       decoration: BoxDecoration(
         color: const Color(0xFF4A6CF7).withOpacity(0.16),
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: BorderRadius.circular(11),
       ),
       child: Icon(
         icon,
-        color: const Color(0xFF4A6CF7),
-        size: 23,
+        color: const Color(0xFF8AA4FF),
+        size: 21,
       ),
     );
   }
@@ -458,13 +694,11 @@ class _SettingsDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(left: 72),
-      child: Divider(
-        height: 1,
-        thickness: 0.5,
-        color: Color(0xFF3A3A3C),
-      ),
+    return const Divider(
+      height: 1,
+      thickness: 0.6,
+      indent: 66,
+      color: Color(0xFF3A3A3C),
     );
   }
 }
