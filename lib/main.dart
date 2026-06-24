@@ -11,15 +11,17 @@ import 'frontend/settlement.dart';
 import 'frontend/notifications.dart';
 import 'frontend/confirmed_calendar.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:kakao_flutter_sdk/kakao_flutter_sdk.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await dotenv.load(fileName: ".env"); 
+  await dotenv.load(fileName: ".env");
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  KakaoSdk.init(nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY'] ?? '');
+
   runApp(const NTPCApp());
 }
 
@@ -46,13 +48,13 @@ class NTPCApp extends StatelessWidget {
         '/home': (context) => const HomeScreen(),
         '/create-meeting': (context) => const CreateMeetingScreen(),
         '/schedule-input': (context) => const ScheduleInputScreen(
-            docID: 'default_id', 
-            meetingTitle: '모임', 
-            meetingEmoji: '📍',
+          docID: 'default_id',
+          meetingTitle: '모임',
+          meetingEmoji: '📍',
         ),
         '/shared-calendar': (context) => const SharedCalendarScreen(
-          docID: 'default_id', 
-          meetingTitle: '모임', 
+          docID: 'default_id',
+          meetingTitle: '모임',
           meetingEmoji: '📍',
         ),
         '/place-candidates': (context) => const PlaceCandidatesScreen(),

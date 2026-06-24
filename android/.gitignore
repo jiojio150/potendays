@@ -12,3 +12,10 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# local env
+.env
+
+# Firebase local config
+android/app/google-services.json
+lib/firebase_options.dart

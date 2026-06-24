@@ -59,7 +59,12 @@ class _SettlementScreenState extends State<SettlementScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final displayMembers = _members.take(_participantCount).toList();
+    final displayMembers = List.generate(_participantCount, (index) {
+      if (index < _members.length) {
+        return _members[index];
+      }
+      return '참여자 ${index + 1}';
+    });
 
     return Scaffold(
       backgroundColor: const Color(0xFF1C1C1E),
@@ -278,6 +283,13 @@ class _MemberSettlementRow extends StatelessWidget {
   final String name;
   final int amount;
 
+  String _formatMoney(int amount) {
+    return amount.toString().replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+      (match) => '${match[1]},',
+    );
+  }
+
   const _MemberSettlementRow({required this.name, required this.amount});
 
   @override
@@ -298,7 +310,7 @@ class _MemberSettlementRow extends StatelessWidget {
             ),
           ),
           Text(
-            '${SettlementScreenStateFormat.format(amount)}원',
+            '${_formatMoney(amount)}원',
             style: const TextStyle(
               color: Color(0xFF9FC2FF),
               fontSize: 16,
@@ -307,15 +319,6 @@ class _MemberSettlementRow extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class SettlementScreenStateFormat {
-  static String format(int amount) {
-    return amount.toString().replaceAllMapped(
-      RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
-          (match) => '${match[1]},',
     );
   }
 }

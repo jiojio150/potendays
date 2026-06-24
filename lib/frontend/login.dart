@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import 'package:flutter/services.dart';
+import 'package:kakao_flutter_sdk/kakao_flutter_sdk.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
@@ -16,6 +18,51 @@ class LoginScreen extends StatelessWidget {
     } catch (e) {
       debugPrint("로그인 에러: $e");
 
+    }
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //  카카오 로그인 함수
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Future<void> signInWithKakao(BuildContext context) async {
+    try {
+      OAuthToken token;
+
+      if (await isKakaoTalkInstalled()) {
+        try {
+          token = await UserApi.instance.loginWithKakaoTalk();
+          print('카카오톡으로 로그인 성공: ${token.accessToken}');
+        } catch (error) {
+          print('카카오톡으로 로그인 실패: $error');
+
+          if (error is PlatformException && error.code == 'CANCELED') {
+            return;
+          }
+
+          token = await UserApi.instance.loginWithKakaoAccount();
+          print('카카오계정으로 로그인 성공: ${token.accessToken}');
+        }
+      } else {
+        token = await UserApi.instance.loginWithKakaoAccount();
+        print('카카오계정으로 로그인 성공: ${token.accessToken}');
+      }
+
+      final user = await UserApi.instance.me();
+
+      print('카카오 회원번호: ${user.id}');
+      print('닉네임: ${user.kakaoAccount?.profile?.nickname}');
+
+      if (!context.mounted) return;
+
+      Navigator.pushReplacementNamed(context, '/home');
+    } catch (error) {
+      print('카카오 로그인 실패: $error');
+
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('카카오 로그인에 실패했습니다.')));
     }
   }
 
@@ -48,7 +95,7 @@ class LoginScreen extends StatelessWidget {
               
               const SizedBox(height: 16),
               _SocialLoginButton(
-                onPressed: () {}, 
+                onPressed: () {signInWithKakao(context);}, 
                 icon: _KakaoIcon(),
                 label: '카카오톡으로 시작하기',
                 backgroundColor: const Color(0xFFFEE500),
