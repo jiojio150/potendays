@@ -90,7 +90,7 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
         creatorUid: user.uid,
         participants: [user.uid],
         description: _descriptionController.text.trim(),
-        participantCount: int.tryParse(_participantController.text) ?? 1,
+        participantLimit: int.tryParse(_participantController.text.trim()),
       );
 
       if (mounted) {

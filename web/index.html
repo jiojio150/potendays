@@ -34,6 +34,16 @@
 
   <meta name="google-signin-client_id" content="300701135857-p1ol5r8vcepbbn4l7fkrloln62r6u6v0.apps.googleusercontent.com">
 </head>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register(
+        '/firebase-messaging-sw.js',
+        { scope: '/firebase-cloud-messaging-push-scope' }
+      );
+    });
+  }
+</script>
 <body>
   <!--
     You can customize the "flutter_bootstrap.js" script.
