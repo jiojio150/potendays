@@ -13,7 +13,6 @@ dependencies:
   google_sign_in: ^6.2.1
   kakao_flutter_sdk: ^1.9.1
   flutter_dotenv: ^6.0.1
-  # 여기에 있던 패키지들을 모두 dependencies 쪽으로 옮겼어요!
   cupertino_icons: ^1.0.8
   firebase_core: ^4.7.0
   cloud_firestore: ^6.3.0
