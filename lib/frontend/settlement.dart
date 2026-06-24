@@ -670,7 +670,6 @@ class _ParticipantSettlementRow extends StatelessWidget {
       (match) => '${match[1]},',
     );
   }
-
   @override
   Widget build(BuildContext context) {
     return InkWell(

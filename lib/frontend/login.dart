@@ -147,6 +147,51 @@ class LoginScreen extends StatelessWidget {
     }
   }
 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //  카카오 로그인 함수
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Future<void> signInWithKakao(BuildContext context) async {
+    try {
+      OAuthToken token;
+
+      if (await isKakaoTalkInstalled()) {
+        try {
+          token = await UserApi.instance.loginWithKakaoTalk();
+          print('카카오톡으로 로그인 성공: ${token.accessToken}');
+        } catch (error) {
+          print('카카오톡으로 로그인 실패: $error');
+
+          if (error is PlatformException && error.code == 'CANCELED') {
+            return;
+          }
+
+          token = await UserApi.instance.loginWithKakaoAccount();
+          print('카카오계정으로 로그인 성공: ${token.accessToken}');
+        }
+      } else {
+        token = await UserApi.instance.loginWithKakaoAccount();
+        print('카카오계정으로 로그인 성공: ${token.accessToken}');
+      }
+
+      final user = await UserApi.instance.me();
+
+      print('카카오 회원번호: ${user.id}');
+      print('닉네임: ${user.kakaoAccount?.profile?.nickname}');
+
+      if (!context.mounted) return;
+
+      Navigator.pushReplacementNamed(context, '/home');
+    } catch (error) {
+      print('카카오 로그인 실패: $error');
+
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('카카오 로그인에 실패했습니다.')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
