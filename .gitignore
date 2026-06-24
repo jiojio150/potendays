@@ -44,8 +44,22 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# 플랫폼별 보안 파일들을 한 번에 차단
+# 플랫폼별 Firebase 설정 파일
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
 lib/firebase_options.dart
+
+# 환경 변수
 .env
+.env.*
+!.env.example
+
+# Firebase 관리자 및 서비스 계정 비공개 키
+**/*firebase-adminsdk*.json
+**/service-account*.json
+
+# Android 서명 및 로컬 설정
+android/key.properties
+android/local.properties
+*.jks
+*.keystore

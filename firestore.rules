@@ -1,0 +1,187 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isParticipant(meetingId) {
+      return signedIn()
+        && request.auth.uid in get(
+          /databases/$(database)/documents/meetings/$(meetingId)
+        ).data.participants;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn();
+
+      allow create, update, delete: if signedIn()
+        && request.auth.uid == uid;
+
+    }
+
+    match /meetings/{meetingId} {
+      allow create: if signedIn()
+        && request.resource.data.creatorUid == request.auth.uid
+        && request.auth.uid in request.resource.data.participants
+        && request.resource.data.participantCount
+          == request.resource.data.participants.size();
+
+      allow get: if signedIn();
+
+      allow list: if signedIn()
+        && request.auth.uid in resource.data.participants;
+
+      allow update: if signedIn() && (
+        resource.data.creatorUid == request.auth.uid
+        ||
+        (
+          !(request.auth.uid in resource.data.participants)
+          && request.auth.uid in request.resource.data.participants
+          && request.resource.data.participants.hasAll(
+            resource.data.participants
+          )
+          && request.resource.data.participants.size()
+            == resource.data.participants.size() + 1
+          && request.resource.data.participantCount
+            == request.resource.data.participants.size()
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              'participants',
+              'participantCount'
+            ])
+        )
+      );
+
+      allow delete: if signedIn()
+        && resource.data.creatorUid == request.auth.uid;
+
+      match /schedules/{uid} {
+        allow read: if isParticipant(meetingId);
+
+        allow create, update: if isParticipant(meetingId)
+          && request.auth.uid == uid
+          && request.resource.data.uid == request.auth.uid;
+
+        allow delete: if isParticipant(meetingId)
+          && request.auth.uid == uid;
+      }
+
+      match /settlements/{settlementId} {
+        allow read: if isParticipant(meetingId);
+
+        // 정산 생성과 삭제는 모임장만 가능
+        allow create: if signedIn()
+          && get(
+            /databases/$(database)/documents/meetings/$(meetingId)
+          ).data.creatorUid == request.auth.uid
+          && request.resource.data.createdByUid == request.auth.uid
+          && request.resource.data.participantUids is list
+          && request.resource.data.paidUids is list
+          && request.resource.data.paidUids.size() == 0
+          && request.resource.data.status == 'pending';
+
+        allow delete: if signedIn()
+          && get(
+            /databases/$(database)/documents/meetings/$(meetingId)
+          ).data.creatorUid == request.auth.uid;
+
+        // 모임장은 정산 문서를 수정할 수 있다.
+        // 일반 참여자는 자신의 납부 완료 여부만 추가하거나 제거할 수 있다.
+        allow update: if signedIn() && (
+          get(
+            /databases/$(database)/documents/meetings/$(meetingId)
+          ).data.creatorUid == request.auth.uid
+          ||
+          (
+            isParticipant(meetingId)
+            && request.auth.uid in resource.data.participantUids
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'paidUids',
+                'status',
+                'updatedAt'
+              ])
+            && request.resource.data.participantUids
+              == resource.data.participantUids
+            && (
+              (
+                !(request.auth.uid in resource.data.paidUids)
+                && request.auth.uid in request.resource.data.paidUids
+                && request.resource.data.paidUids.hasAll(
+                  resource.data.paidUids
+                )
+                && request.resource.data.paidUids.size()
+                  == resource.data.paidUids.size() + 1
+              )
+              ||
+              (
+                request.auth.uid in resource.data.paidUids
+                && !(request.auth.uid in request.resource.data.paidUids)
+                && resource.data.paidUids.hasAll(
+                  request.resource.data.paidUids
+                )
+                && request.resource.data.paidUids.size()
+                  == resource.data.paidUids.size() - 1
+              )
+            )
+            && (
+              (
+                request.resource.data.paidUids.size()
+                  == resource.data.participantUids.size()
+                && request.resource.data.status == 'completed'
+              )
+              ||
+              (
+                request.resource.data.paidUids.size()
+                  < resource.data.participantUids.size()
+                && request.resource.data.status == 'pending'
+              )
+            )
+          )
+        );
+      }
+    }
+
+    match /{path=**}/notifications/{notificationId} {
+      allow read: if signedIn()
+        && request.auth.uid in resource.data.targetUids;
+
+      allow create: if signedIn()
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.meetingId is string
+        && request.resource.data.targetUids is list
+        && request.auth.uid in get(
+          /databases/$(database)/documents/meetings/$(request.resource.data.meetingId)
+        ).data.participants;
+
+      allow update: if signedIn() && (
+        (
+          request.auth.uid in resource.data.targetUids
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly(['readBy'])
+          && request.resource.data.readBy.hasAll(resource.data.readBy)
+          && request.auth.uid in request.resource.data.readBy
+        )
+        ||
+        (
+          resource.data.createdByUid == request.auth.uid
+          && request.resource.data.createdByUid == request.auth.uid
+          && request.resource.data.meetingId
+            == resource.data.meetingId
+        )
+      );
+
+      allow delete: if signedIn()
+        && resource.data.createdByUid == request.auth.uid;
+    }
+  }
+}
