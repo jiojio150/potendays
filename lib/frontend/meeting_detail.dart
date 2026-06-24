@@ -323,6 +323,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (_) => PlaceCandidatesScreen(
+                    meetingId: widget.docID,
                     meetingTitle: title,
                     meetingEmoji: emoji,
                   ),

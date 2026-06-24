@@ -5,6 +5,11 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
+        <!-- Google Maps API Key -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="google map api key" />
+
          <!-- 카카오 로그인 커스텀 URL 스킴 설정 -->
     <activity
         android:name="com.kakao.sdk.flutter.AuthCodeCustomTabsActivity"
@@ -16,7 +21,7 @@
             <category android:name="android.intent.category.BROWSABLE" />
 
             <data
-                android:scheme="kakao2476e6f7ce351b65f31f7b0e0f62e5b1"
+                android:scheme="kakao {YOUR_NATIVE_APP_KEY}"
                 android:host="oauth" />
         </intent-filter>
     </activity>
