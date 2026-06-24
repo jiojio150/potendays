@@ -1,22 +1,23 @@
-import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
-import 'frontend/login.dart';
-import 'frontend/home.dart';
-import 'frontend/create_meeting.dart';
-import 'frontend/schedule_input.dart';
-import 'frontend/shared_calendar.dart';
-import 'frontend/place_candidates.dart';
-import 'frontend/settlement.dart';
-import 'frontend/notifications.dart';
-import 'frontend/confirmed_calendar.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:kakao_flutter_sdk/kakao_flutter_sdk.dart';
+
+import 'firebase_options.dart';
+import 'frontend/confirmed_calendar.dart';
+import 'frontend/create_meeting.dart';
+import 'frontend/home.dart';
+import 'frontend/login.dart';
+import 'frontend/notifications.dart';
+import 'frontend/place_candidates.dart';
+import 'frontend/schedule_input.dart';
+import 'frontend/settlement.dart';
+import 'frontend/shared_calendar.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await dotenv.load(fileName: ".env");
+  await dotenv.load(fileName: '.env');
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
@@ -57,7 +58,11 @@ class NTPCApp extends StatelessWidget {
           meetingTitle: '모임',
           meetingEmoji: '📍',
         ),
-        '/place-candidates': (context) => const PlaceCandidatesScreen(),
+        '/place-candidates': (context) => const PlaceCandidatesScreen(
+          meetingId: 'default_id',
+          meetingTitle: '모임',
+          meetingEmoji: '📍',
+        ),
         '/settlement': (context) => const SettlementScreen(),
         '/notifications': (context) => const NotificationsScreen(),
         '/confirmed-calendar': (context) => const ConfirmedCalendarScreen(),

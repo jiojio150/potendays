@@ -90,12 +90,13 @@ class MeetingDetailScreen extends StatelessWidget {
                     _FeatureCard(
                       icon: Icons.place_rounded,
                       title: '장소 후보',
-                      description: '장소 후보를 확인하고 투표합니다.',
+                      description: '장소 후보를 추가하고 투표합니다.',
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) => PlaceCandidatesScreen(
+                              meetingId: docID,
                               meetingTitle: title,
                               meetingEmoji: emoji,
                             ),

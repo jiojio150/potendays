@@ -404,27 +404,36 @@ class _SharedCalendarScreenState extends State<SharedCalendarScreen> {
     );
   }
 
-  Widget _buildNextButton(BuildContext context) {
+Widget _buildNextButton(BuildContext context) {
     return SizedBox(
       width: double.infinity,
       height: 54,
       child: ElevatedButton(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => PlaceCandidatesScreen(
-              meetingTitle: widget.meetingTitle,
-              meetingEmoji: widget.meetingEmoji,
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PlaceCandidatesScreen(
+                meetingId: widget.docID,
+                meetingTitle: widget.meetingTitle,
+                meetingEmoji: widget.meetingEmoji,
+              ),
             ),
-          ),
-        ),
+          );
+        },
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF4A6CF7),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
         child: const Text(
           '장소 후보 보러가기',
-          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
     );
