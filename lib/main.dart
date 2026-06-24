@@ -51,7 +51,7 @@ class PotenDaysApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Poten Day',
+      title: 'PotenDays',
       debugShowCheckedModeBanner: false,
 
       // 로컬 알림을 눌렀을 때 화면 밖에서도 Navigator를 사용하기 위한 키
