@@ -1,11 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum AppNotificationType {
-  schedule,
-  settlement,
-  reminder,
-  general,
-}
+enum AppNotificationType { schedule, settlement, reminder, general }
 
 class AppNotificationModel {
   final String documentPath;
@@ -14,6 +9,8 @@ class AppNotificationModel {
   final AppNotificationType type;
   final String meetingId;
   final String meetingTitle;
+  final String meetingEmoji;
+  final String settlementId;
   final List<String> targetUids;
   final List<String> readBy;
   final DateTime? createdAt;
@@ -25,6 +22,8 @@ class AppNotificationModel {
     required this.type,
     required this.meetingId,
     required this.meetingTitle,
+    required this.meetingEmoji,
+    required this.settlementId,
     required this.targetUids,
     required this.readBy,
     this.createdAt,
@@ -48,6 +47,8 @@ class AppNotificationModel {
       ),
       meetingId: data['meetingId'] as String? ?? '',
       meetingTitle: data['meetingTitle'] as String? ?? '',
+      meetingEmoji: data['meetingEmoji'] as String? ?? '',
+      settlementId: data['settlementId'] as String? ?? '',
       targetUids: List<String>.from(data['targetUids'] ?? <String>[]),
       readBy: List<String>.from(data['readBy'] ?? <String>[]),
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),

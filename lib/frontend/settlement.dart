@@ -216,17 +216,11 @@ class _SettlementScreenState extends State<SettlementScreen> {
     try {
       final firestore = FirebaseFirestore.instance;
 
-      final meetingRef = firestore
-          .collection('meetings')
-          .doc(widget.meetingId);
+      final meetingRef = firestore.collection('meetings').doc(widget.meetingId);
 
-      final settlementRef = meetingRef
-          .collection('settlements')
-          .doc();
+      final settlementRef = meetingRef.collection('settlements').doc();
 
-      final notificationRef = meetingRef
-          .collection('notifications')
-          .doc();
+      final notificationRef = meetingRef.collection('notifications').doc();
 
       final batch = firestore.batch();
 
@@ -247,6 +241,8 @@ class _SettlementScreenState extends State<SettlementScreen> {
 
       batch.set(notificationRef, {
         'meetingId': widget.meetingId,
+        'meetingTitle': widget.meetingTitle,
+        'meetingEmoji': widget.meetingEmoji,
         'settlementId': settlementRef.id,
         'type': 'settlement',
         'title': '💸 정산 요청',
@@ -670,6 +666,7 @@ class _ParticipantSettlementRow extends StatelessWidget {
       (match) => '${match[1]},',
     );
   }
+
   @override
   Widget build(BuildContext context) {
     return InkWell(

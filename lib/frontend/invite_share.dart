@@ -10,11 +10,13 @@ class InviteShareScreen extends StatelessWidget {
   final String meetingId;
   final String meetingTitle;
   final String meetingEmoji;
+  final String preferredInviteMethod;
 
   const InviteShareScreen({
     super.key,
     required this.meetingId,
     required this.meetingTitle,
+    this.preferredInviteMethod = 'link',
     this.meetingEmoji = '📅',
   });
 
@@ -27,39 +29,34 @@ class InviteShareScreen extends StatelessWidget {
         '초대 코드: $meetingId';
   }
 
-  Future<void> _copy(
-    BuildContext context,
-    String value,
-    String message,
-  ) async {
+  Future<void> _copy(BuildContext context, String value, String message) async {
     await Clipboard.setData(ClipboardData(text: value));
 
     if (!context.mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _share(BuildContext context) async {
     try {
       await SharePlus.instance.share(
-        ShareParams(
-          text: _shareText,
-          subject: '$meetingTitle 모임 초대',
-        ),
+        ShareParams(text: _shareText, subject: '$meetingTitle 모임 초대'),
       );
     } catch (error) {
       if (!context.mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('공유에 실패했습니다: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('공유에 실패했습니다: $error')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final bool prefersQr = preferredInviteMethod == 'qr';
+
     return Scaffold(
       backgroundColor: const Color(0xFF1C1C1E),
       appBar: AppBar(
@@ -88,11 +85,10 @@ class InviteShareScreen extends StatelessWidget {
             const Text(
               '아래 QR 또는 초대 링크를 참여자에게 공유하세요.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white54,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: Colors.white54, fontSize: 14),
             ),
+            const SizedBox(height: 16),
+            _InviteMethodNotice(prefersQr: prefersQr),
             const SizedBox(height: 26),
             Center(
               child: Container(
@@ -113,21 +109,13 @@ class InviteShareScreen extends StatelessWidget {
             _InfoBox(
               label: '초대 코드',
               value: meetingId,
-              onCopy: () => _copy(
-                context,
-                meetingId,
-                '초대 코드가 복사되었습니다.',
-              ),
+              onCopy: () => _copy(context, meetingId, '초대 코드가 복사되었습니다.'),
             ),
             const SizedBox(height: 12),
             _InfoBox(
               label: '초대 링크',
               value: _inviteLink,
-              onCopy: () => _copy(
-                context,
-                _inviteLink,
-                '초대 링크가 복사되었습니다.',
-              ),
+              onCopy: () => _copy(context, _inviteLink, '초대 링크가 복사되었습니다.'),
             ),
             const SizedBox(height: 24),
             SizedBox(
@@ -137,13 +125,10 @@ class InviteShareScreen extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFF4A6CF7),
                 ),
-                icon: const Icon(
-                  Icons.ios_share_rounded,
-                  color: Colors.white,
-                ),
-                label: const Text(
-                  '초대 링크 공유',
-                  style: TextStyle(
+                icon: const Icon(Icons.ios_share_rounded, color: Colors.white),
+                label: Text(
+                  prefersQr ? 'QR 코드 공유' : '초대 링크 공유',
+                  style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
                   ),
@@ -163,6 +148,42 @@ class InviteShareScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _InviteMethodNotice extends StatelessWidget {
+  final bool prefersQr;
+
+  const _InviteMethodNotice({required this.prefersQr});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF28345F),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF4A6CF7)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            prefersQr ? Icons.qr_code_2_rounded : Icons.link_rounded,
+            color: const Color(0xFF9FC2FF),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              prefersQr ? '선택한 초대 방식: QR 코드' : '선택한 초대 방식: 링크 공유',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -196,10 +217,7 @@ class _InfoBox extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: Colors.white38,
-                    fontSize: 12,
-                  ),
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
                 ),
                 const SizedBox(height: 5),
                 SelectableText(
@@ -215,10 +233,7 @@ class _InfoBox extends StatelessWidget {
           ),
           IconButton(
             onPressed: onCopy,
-            icon: const Icon(
-              Icons.copy_rounded,
-              color: Color(0xFF8AA4FF),
-            ),
+            icon: const Icon(Icons.copy_rounded, color: Color(0xFF8AA4FF)),
           ),
         ],
       ),

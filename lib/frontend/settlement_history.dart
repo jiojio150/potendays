@@ -8,12 +8,14 @@ class SettlementHistoryScreen extends StatelessWidget {
   final String meetingId;
   final String meetingTitle;
   final String meetingEmoji;
+  final String initialSettlementId;
 
   const SettlementHistoryScreen({
     super.key,
     required this.meetingId,
     required this.meetingTitle,
     required this.meetingEmoji,
+    this.initialSettlementId = '',
   });
 
   @override
@@ -50,7 +52,7 @@ class SettlementHistoryScreen extends StatelessWidget {
                   return ListView.separated(
                     padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
                     itemCount: settlementDocs.length,
-                    separatorBuilder: (_, __) {
+                    separatorBuilder: (context, index) {
                       return const SizedBox(height: 14);
                     },
                     itemBuilder: (context, index) {
@@ -60,6 +62,7 @@ class SettlementHistoryScreen extends StatelessWidget {
                         meetingId: meetingId,
                         settlementId: settlementDoc.id,
                         data: settlementDoc.data(),
+                        isHighlighted: settlementDoc.id == initialSettlementId,
                       );
                     },
                   );
@@ -175,11 +178,13 @@ class _SettlementHistoryCard extends StatefulWidget {
   final String meetingId;
   final String settlementId;
   final Map<String, dynamic> data;
+  final bool isHighlighted;
 
   const _SettlementHistoryCard({
     required this.meetingId,
     required this.settlementId,
     required this.data,
+    this.isHighlighted = false,
   });
 
   @override
@@ -385,14 +390,28 @@ class _SettlementHistoryCardState extends State<_SettlementHistoryCard> {
         color: const Color(0xFF242424),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: _isCompleted
+          color: widget.isHighlighted
+              ? const Color(0xFF8AA4FF)
+              : _isCompleted
               ? const Color(0xFF42C77A).withValues(alpha: 0.5)
               : Colors.white12,
+          width: widget.isHighlighted ? 1.4 : 1,
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (widget.isHighlighted) ...[
+            const Text(
+              '알림에서 열린 정산',
+              style: TextStyle(
+                color: Color(0xFF9FC2FF),
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           Row(
             children: [
               Container(
