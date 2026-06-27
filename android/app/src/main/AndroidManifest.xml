@@ -8,7 +8,7 @@
         <!-- Google Maps API Key -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="google map api key" />
+            android:value="${MAPS_API_KEY}" />
 
          <!-- 카카오 로그인 커스텀 URL 스킴 설정 -->
     <activity
@@ -21,7 +21,7 @@
             <category android:name="android.intent.category.BROWSABLE" />
 
             <data
-                android:scheme="kakao {YOUR_NATIVE_APP_KEY}"
+                android:scheme="kakao${KAKAO_NATIVE_APP_KEY}"
                 android:host="oauth" />
         </intent-filter>
     </activity>

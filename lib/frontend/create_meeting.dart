@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/meeting_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'invite_share.dart';
 
 class CreateMeetingScreen extends StatefulWidget {
   const CreateMeetingScreen({super.key});
@@ -33,13 +34,29 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
   }
 
   void _showEmojiPicker() {
-    final List<String> emojis = ['🎉', '🍕', '☕', '🍺', '⚽', '📚', '🎬', '🏠', '✈️', '🎂', '🔥', '📍'];
-    
+    final List<String> emojis = [
+      '🎉',
+      '🍕',
+      '☕',
+      '🍺',
+      '⚽',
+      '📚',
+      '🎬',
+      '🏠',
+      '✈️',
+      '🎂',
+      '🔥',
+      '📍',
+    ];
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF2C2C2E),
-        title: const Text('아이콘 선택', style: TextStyle(color: Colors.white, fontSize: 18)),
+        title: const Text(
+          '아이콘 선택',
+          style: TextStyle(color: Colors.white, fontSize: 18),
+        ),
         content: SizedBox(
           width: double.maxFinite,
           child: GridView.builder(
@@ -62,7 +79,10 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
                     color: const Color(0xFF3A3A3C),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text(emojis[index], style: const TextStyle(fontSize: 24)),
+                  child: Text(
+                    emojis[index],
+                    style: const TextStyle(fontSize: 24),
+                  ),
                 ),
               );
             },
@@ -80,43 +100,70 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('로그인이 필요합니다.')));
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('로그인이 필요합니다.')));
+        }
         return;
       }
 
-      await _meetingService.createMeeting(
-        title: _titleController.text.trim(),
-        emoji: _emojiController.text.isEmpty ? "🎉" : _emojiController.text,
+      final String inviteMethod = _inviteMethod == 0 ? 'link' : 'qr';
+      final String meetingTitle = _titleController.text.trim();
+      final String meetingEmoji = _emojiController.text.isEmpty
+          ? '🎉'
+          : _emojiController.text;
+
+      final String meetingId = await _meetingService.createMeeting(
+        title: meetingTitle,
+        emoji: meetingEmoji,
         creatorUid: user.uid,
         participants: [user.uid],
         description: _descriptionController.text.trim(),
+        inviteMethod: inviteMethod,
         participantLimit: int.tryParse(_participantController.text.trim()),
       );
 
       if (mounted) {
-        _showSuccessDialog(); 
+        _showSuccessDialog(
+          meetingId: meetingId,
+          meetingTitle: meetingTitle,
+          meetingEmoji: meetingEmoji,
+          inviteMethod: inviteMethod,
+        );
       }
     } catch (e) {
       debugPrint("생성 에러: $e");
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('모임 생성에 실패했습니다.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('모임 생성에 실패했습니다.')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _showSuccessDialog() {
+  void _showSuccessDialog({
+    required String meetingId,
+    required String meetingTitle,
+    required String meetingEmoji,
+    required String inviteMethod,
+  }) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF2C2C2E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('모임 생성 완료! 🎉', style: TextStyle(color: Colors.white, fontSize: 18)),
-        content: Text('"${_titleController.text}" 모임이 생성되었습니다.', style: const TextStyle(color: Colors.white60, fontSize: 14)),
+        title: const Text(
+          '모임 생성 완료! 🎉',
+          style: TextStyle(color: Colors.white, fontSize: 18),
+        ),
+        content: Text(
+          '"${_titleController.text}" 모임이 생성되었습니다.',
+          style: const TextStyle(color: Colors.white60, fontSize: 14),
+        ),
         actions: [
           TextButton(
             onPressed: () {
@@ -124,6 +171,29 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
               Navigator.of(context).pop();
             },
             child: const Text('확인', style: TextStyle(color: Color(0xFF4A6CF7))),
+          ),
+          FilledButton(
+            onPressed: () {
+              final NavigatorState navigator = Navigator.of(context);
+              navigator.pop();
+              navigator.pushReplacement(
+                MaterialPageRoute(
+                  builder: (_) => InviteShareScreen(
+                    meetingId: meetingId,
+                    meetingTitle: meetingTitle,
+                    meetingEmoji: meetingEmoji,
+                    preferredInviteMethod: inviteMethod,
+                  ),
+                ),
+              );
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF4A6CF7),
+            ),
+            child: Text(
+              inviteMethod == 'qr' ? 'QR 보기' : '링크 공유',
+              style: const TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -269,7 +339,10 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
                 style: const TextStyle(color: Colors.white, fontSize: 18),
                 decoration: _inputDecoration(hintText: '🎉').copyWith(
                   labelText: "아이콘",
-                  labelStyle: const TextStyle(color: Colors.white54, fontSize: 12),
+                  labelStyle: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 12,
+                  ),
                 ),
               ),
             ),
@@ -378,21 +451,21 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
         ),
         child: _isLoading
             ? const SizedBox(
-          width: 22,
-          height: 22,
-          child: CircularProgressIndicator(
-            color: Colors.white,
-            strokeWidth: 2.5,
-          ),
-        )
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2.5,
+                ),
+              )
             : const Text(
-          '모임 생성하기',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
+                '모임 생성하기',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
       ),
     );
   }

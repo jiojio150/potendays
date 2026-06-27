@@ -1,8 +1,13 @@
 // lib/frontend/place_candidates.dart
 
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 // 장소 후보 입력 / 투표 — REQ-F-06, F-07
@@ -23,6 +28,7 @@ class PlaceCandidatesScreen extends StatefulWidget {
 }
 
 class _PlaceCandidatesScreenState extends State<PlaceCandidatesScreen> {
+  static const MethodChannel _configChannel = MethodChannel('potendays/config');
   static const CameraPosition _initialCameraPosition = CameraPosition(
     target: LatLng(37.5665, 126.9780),
     zoom: 12.5,
@@ -30,9 +36,13 @@ class _PlaceCandidatesScreenState extends State<PlaceCandidatesScreen> {
 
   GoogleMapController? _mapController;
   LatLng? _selectedLocation;
+  final TextEditingController _searchController = TextEditingController();
+  List<_PlaceSearchResult> _searchResults = <_PlaceSearchResult>[];
 
   bool _isAdding = false;
   bool _isVoting = false;
+  bool _isSearching = false;
+  String? _searchError;
 
   String? get _currentUid {
     return FirebaseAuth.instance.currentUser?.uid;
@@ -48,6 +58,7 @@ class _PlaceCandidatesScreenState extends State<PlaceCandidatesScreen> {
   @override
   void dispose() {
     _mapController?.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -86,6 +97,164 @@ class _PlaceCandidatesScreenState extends State<PlaceCandidatesScreen> {
       name: result.name,
       address: result.address,
       location: selectedLocation,
+    );
+  }
+
+  Future<String> _resolveGoogleMapsApiKey() async {
+    final String envKey =
+        dotenv.env['GOOGLE_MAPS_API_KEY']?.trim().isNotEmpty == true
+        ? dotenv.env['GOOGLE_MAPS_API_KEY']!.trim()
+        : (dotenv.env['MAPS_API_KEY']?.trim() ?? '');
+
+    if (envKey.isNotEmpty) {
+      return envKey;
+    }
+
+    if (!Platform.isAndroid) {
+      return '';
+    }
+
+    try {
+      return await _configChannel.invokeMethod<String>('googleMapsApiKey') ??
+          '';
+    } catch (error) {
+      debugPrint('Google Maps API key 조회 실패: $error');
+      return '';
+    }
+  }
+
+  Future<void> _searchPlaces() async {
+    final String query = _searchController.text.trim();
+
+    if (query.isEmpty) {
+      _showMessage('검색할 장소명을 입력해 주세요.');
+      return;
+    }
+
+    final String apiKey = await _resolveGoogleMapsApiKey();
+
+    if (apiKey.isEmpty) {
+      setState(() {
+        _searchResults = <_PlaceSearchResult>[];
+        _searchError = '.env에 GOOGLE_MAPS_API_KEY를 추가하면 장소 검색을 사용할 수 있습니다.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isSearching = true;
+      _searchError = null;
+    });
+
+    final HttpClient client = HttpClient();
+
+    try {
+      final Uri uri = Uri.https(
+        'maps.googleapis.com',
+        '/maps/api/place/textsearch/json',
+        <String, String>{
+          'query': query,
+          'key': apiKey,
+          'language': 'ko',
+          'region': 'kr',
+        },
+      );
+
+      final HttpClientRequest request = await client.getUrl(uri);
+      final HttpClientResponse response = await request.close();
+      final String body = await response.transform(utf8.decoder).join();
+      final Map<String, dynamic> json =
+          jsonDecode(body) as Map<String, dynamic>;
+      final String status = json['status'] as String? ?? 'UNKNOWN';
+
+      if (status != 'OK' && status != 'ZERO_RESULTS') {
+        throw StateError(json['error_message'] as String? ?? status);
+      }
+
+      final List<dynamic> results =
+          json['results'] as List<dynamic>? ?? <dynamic>[];
+
+      if (!mounted) return;
+
+      setState(() {
+        _searchResults = results
+            .take(5)
+            .map((item) {
+              final Map<String, dynamic> raw = item as Map<String, dynamic>;
+              final Map<String, dynamic> geometry =
+                  raw['geometry'] as Map<String, dynamic>? ??
+                  <String, dynamic>{};
+              final Map<String, dynamic> location =
+                  geometry['location'] as Map<String, dynamic>? ??
+                  <String, dynamic>{};
+              final double? lat = (location['lat'] as num?)?.toDouble();
+              final double? lng = (location['lng'] as num?)?.toDouble();
+
+              if (lat == null || lng == null) {
+                return null;
+              }
+
+              return _PlaceSearchResult(
+                name: raw['name'] as String? ?? '이름 없는 장소',
+                address: raw['formatted_address'] as String? ?? '주소 정보 없음',
+                location: LatLng(lat, lng),
+                rating: (raw['rating'] as num?)?.toDouble(),
+              );
+            })
+            .whereType<_PlaceSearchResult>()
+            .toList();
+        _searchError = _searchResults.isEmpty ? '검색 결과가 없습니다.' : null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _searchResults = <_PlaceSearchResult>[];
+        _searchError = '장소 검색에 실패했습니다. $error';
+      });
+    } finally {
+      client.close(force: true);
+
+      if (mounted) {
+        setState(() => _isSearching = false);
+      }
+    }
+  }
+
+  Future<void> _addSearchResult(_PlaceSearchResult place) async {
+    if (_currentUid == null) {
+      _showMessage('로그인이 필요합니다.');
+      return;
+    }
+
+    setState(() {
+      _selectedLocation = place.location;
+    });
+
+    await _moveCamera(place.location);
+
+    if (!mounted) return;
+
+    final result = await showDialog<_PlaceInputResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return _PlaceInputDialog(
+          selectedLocation: place.location,
+          initialName: place.name,
+          initialAddress: place.address,
+        );
+      },
+    );
+
+    if (result == null) {
+      return;
+    }
+
+    await _addPlace(
+      name: result.name,
+      address: result.address,
+      location: place.location,
     );
   }
 
@@ -389,6 +558,8 @@ class _PlaceCandidatesScreenState extends State<PlaceCandidatesScreen> {
                           style: TextStyle(color: Colors.white54, fontSize: 13),
                         ),
                         const SizedBox(height: 12),
+                        _buildPlaceSearch(),
+                        const SizedBox(height: 12),
                         ClipRRect(
                           borderRadius: BorderRadius.circular(14),
                           child: SizedBox(
@@ -409,6 +580,8 @@ class _PlaceCandidatesScreenState extends State<PlaceCandidatesScreen> {
                           ),
                         ),
                         const SizedBox(height: 22),
+                        _buildRecommendedPlace(docs),
+                        if (docs.isNotEmpty) const SizedBox(height: 22),
                         Row(
                           children: [
                             const Expanded(
@@ -485,6 +658,131 @@ class _PlaceCandidatesScreenState extends State<PlaceCandidatesScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPlaceSearch() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF242424),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => _searchPlaces(),
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: '장소명 검색',
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      color: Color(0xFF9FC2FF),
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFF1C1C1E),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                height: 48,
+                child: FilledButton(
+                  onPressed: _isSearching ? null : _searchPlaces,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF4A6CF7),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
+                  child: _isSearching
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('검색', style: TextStyle(color: Colors.white)),
+                ),
+              ),
+            ],
+          ),
+          if (_searchError != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _searchError!,
+              style: const TextStyle(color: Colors.orangeAccent, fontSize: 13),
+            ),
+          ],
+          if (_searchResults.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ..._searchResults.map(
+              (place) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _PlaceSearchResultTile(
+                  place: place,
+                  onPreview: () async {
+                    setState(() {
+                      _selectedLocation = place.location;
+                    });
+                    await _moveCamera(place.location);
+                  },
+                  onAdd: () => _addSearchResult(place),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecommendedPlace(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    if (docs.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final sorted = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(docs)
+      ..sort((a, b) {
+        final int aVotes = List<String>.from(
+          a.data()['voterUids'] ?? <String>[],
+        ).length;
+        final int bVotes = List<String>.from(
+          b.data()['voterUids'] ?? <String>[],
+        ).length;
+        return bVotes.compareTo(aVotes);
+      });
+
+    final best = sorted.first;
+    final data = best.data();
+    final location = _readLocation(data);
+    final int voteCount = List<String>.from(
+      data['voterUids'] ?? <String>[],
+    ).length;
+
+    return _RecommendedPlaceCard(
+      name: data['name']?.toString() ?? '이름 없는 장소',
+      address: data['address']?.toString() ?? '주소 없음',
+      voteCount: voteCount,
+      onTap: location == null ? null : () => _moveCamera(location),
     );
   }
 
@@ -687,6 +985,170 @@ class _PlaceCard extends StatelessWidget {
   }
 }
 
+class _PlaceSearchResult {
+  final String name;
+  final String address;
+  final LatLng location;
+  final double? rating;
+
+  const _PlaceSearchResult({
+    required this.name,
+    required this.address,
+    required this.location,
+    this.rating,
+  });
+}
+
+class _PlaceSearchResultTile extends StatelessWidget {
+  final _PlaceSearchResult place;
+  final VoidCallback onPreview;
+  final VoidCallback onAdd;
+
+  const _PlaceSearchResultTile({
+    required this.place,
+    required this.onPreview,
+    required this.onAdd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.place_rounded, color: Color(0xFF9FC2FF)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onPreview,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    place.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    [
+                      place.address,
+                      if (place.rating != null) '평점 ${place.rating}',
+                    ].join(' · '),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: '후보 추가',
+            onPressed: onAdd,
+            icon: const Icon(
+              Icons.add_location_alt_rounded,
+              color: Color(0xFF9FC2FF),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecommendedPlaceCard extends StatelessWidget {
+  final String name;
+  final String address;
+  final int voteCount;
+  final VoidCallback? onTap;
+
+  const _RecommendedPlaceCard({
+    required this.name,
+    required this.address,
+    required this.voteCount,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF28345F),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFF4A6CF7)),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.recommend_rounded,
+              color: Color(0xFF9FC2FF),
+              size: 30,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '추천 장소',
+                    style: TextStyle(
+                      color: Color(0xFF9FC2FF),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    address,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white54, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              '$voteCount표',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _PlaceInputResult {
   final String name;
   final String address;
@@ -696,8 +1158,14 @@ class _PlaceInputResult {
 
 class _PlaceInputDialog extends StatefulWidget {
   final LatLng selectedLocation;
+  final String initialName;
+  final String initialAddress;
 
-  const _PlaceInputDialog({required this.selectedLocation});
+  const _PlaceInputDialog({
+    required this.selectedLocation,
+    this.initialName = '',
+    this.initialAddress = '',
+  });
 
   @override
   State<_PlaceInputDialog> createState() => _PlaceInputDialogState();
@@ -709,6 +1177,13 @@ class _PlaceInputDialogState extends State<_PlaceInputDialog> {
   final TextEditingController _addressController = TextEditingController();
 
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController.text = widget.initialName;
+    _addressController.text = widget.initialAddress;
+  }
 
   @override
   void dispose() {

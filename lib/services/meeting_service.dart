@@ -15,12 +15,13 @@ class MeetingService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // REQ-F-02 모임 생성
-  Future<void> createMeeting({
+  Future<String> createMeeting({
     required String title,
     required String emoji,
     required String creatorUid,
     required List<String> participants,
     required String description,
+    required String inviteMethod,
     int? participantLimit,
   }) async {
     final User? user = _auth.currentUser;
@@ -40,52 +41,50 @@ class MeetingService {
 
     final DateTime now = DateTime.now();
 
-    final DocumentReference<Map<String, dynamic>> meetingRef =
-        await _db.collection('meetings').add({
-      'title': title,
-      'emoji': emoji,
-      'creatorUid': user.uid,
-      'participants': safeParticipants,
-      'description': description,
-      if (participantLimit != null) 'participantLimit': participantLimit,
-      'participantCount': safeParticipants.length,
+    final DocumentReference<Map<String, dynamic>> meetingRef = await _db
+        .collection('meetings')
+        .add({
+          'title': title,
+          'emoji': emoji,
+          'creatorUid': user.uid,
+          'participants': safeParticipants,
+          'description': description,
+          'inviteMethod': inviteMethod,
+          if (participantLimit != null) 'participantLimit': participantLimit,
+          'participantCount': safeParticipants.length,
 
-      // 모임 확정 상태
-      'isConfirmed': false,
+          // 모임 확정 상태
+          'isConfirmed': false,
 
-      // 자동 리마인드 기본 설정
-      'reminderEnabled': true,
-      'scheduleReminderMinutesBefore':
-          defaultScheduleReminderMinutesBefore,
-      'settlementReminderDelayHours':
-          defaultSettlementReminderDelayHours,
-      'inactiveReminderDays': defaultInactiveReminderDays,
+          // 자동 리마인드 기본 설정
+          'reminderEnabled': true,
+          'scheduleReminderMinutesBefore': defaultScheduleReminderMinutesBefore,
+          'settlementReminderDelayHours': defaultSettlementReminderDelayHours,
+          'inactiveReminderDays': defaultInactiveReminderDays,
 
-      // 리마인드 처리 상태
-      'scheduleReminderSent': false,
-      'settlementCompleted': false,
-      'settlementReminderSent': false,
-      'inactiveReminderSent': false,
+          // 리마인드 처리 상태
+          'scheduleReminderSent': false,
+          'settlementCompleted': false,
+          'settlementReminderSent': false,
+          'inactiveReminderSent': false,
 
-      // 아직 확정 일정은 없지만, 장기간 모임 없음 리마인드 기준은 생성일부터 시작
-      'nextInactiveReminderAt': Timestamp.fromDate(
-        now.add(
-          const Duration(days: defaultInactiveReminderDays),
-        ),
-      ),
+          // 아직 확정 일정은 없지만, 장기간 모임 없음 리마인드 기준은 생성일부터 시작
+          'nextInactiveReminderAt': Timestamp.fromDate(
+            now.add(const Duration(days: defaultInactiveReminderDays)),
+          ),
 
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
 
     await LocalNotificationService.instance.scheduleInactiveReminder(
       meetingId: meetingRef.id,
       meetingTitle: title,
-      scheduledAt: now.add(
-        const Duration(days: defaultInactiveReminderDays),
-      ),
+      scheduledAt: now.add(const Duration(days: defaultInactiveReminderDays)),
       enabled: true,
     );
+
+    return meetingRef.id;
   }
 
   // 앱 내부에서 공유하는 초대 링크
@@ -93,9 +92,7 @@ class MeetingService {
     return Uri(
       scheme: 'potendays',
       host: 'join',
-      queryParameters: <String, String>{
-        'meetingId': meetingId,
-      },
+      queryParameters: <String, String>{'meetingId': meetingId},
     ).toString();
   }
 
@@ -145,12 +142,14 @@ class MeetingService {
     }
 
     final String uid = user.uid;
-    final DocumentReference<Map<String, dynamic>> docRef =
-        _db.collection('meetings').doc(docId);
+    final DocumentReference<Map<String, dynamic>> docRef = _db
+        .collection('meetings')
+        .doc(docId);
 
     try {
-      final String result =
-          await _db.runTransaction<String>((transaction) async {
+      final String result = await _db.runTransaction<String>((
+        transaction,
+      ) async {
         final DocumentSnapshot<Map<String, dynamic>> snapshot =
             await transaction.get(docRef);
 
@@ -167,10 +166,7 @@ class MeetingService {
           return 'already_joined';
         }
 
-        final List<String> updatedParticipants = <String>[
-          ...participants,
-          uid,
-        ];
+        final List<String> updatedParticipants = <String>[...participants, uid];
 
         transaction.update(docRef, {
           'participants': updatedParticipants,
@@ -203,9 +199,7 @@ class MeetingService {
         .snapshots();
   }
 
-  Future<DocumentSnapshot<Map<String, dynamic>>> getMeeting(
-    String meetingId,
-  ) {
+  Future<DocumentSnapshot<Map<String, dynamic>>> getMeeting(String meetingId) {
     return _db.collection('meetings').doc(meetingId).get();
   }
 
@@ -229,11 +223,12 @@ class MeetingService {
       throw StateError('Google/Firebase 로그인이 필요합니다.');
     }
 
-    final DocumentReference<Map<String, dynamic>> meetingRef =
-        _db.collection('meetings').doc(meetingId);
+    final DocumentReference<Map<String, dynamic>> meetingRef = _db
+        .collection('meetings')
+        .doc(meetingId);
 
-    final DocumentSnapshot<Map<String, dynamic>> snapshot =
-        await meetingRef.get();
+    final DocumentSnapshot<Map<String, dynamic>> snapshot = await meetingRef
+        .get();
 
     if (!snapshot.exists || snapshot.data() == null) {
       throw StateError('모임 정보를 찾을 수 없습니다.');
@@ -250,18 +245,18 @@ class MeetingService {
       data['participants'] ?? <String>[],
     );
     final String meetingTitle = data['title'] as String? ?? '모임';
+    final String meetingEmoji = data['emoji'] as String? ?? '📅';
 
-    final bool reminderEnabled =
-        data['reminderEnabled'] as bool? ?? true;
+    final bool reminderEnabled = data['reminderEnabled'] as bool? ?? true;
     final int scheduleReminderMinutesBefore =
         (data['scheduleReminderMinutesBefore'] as num?)?.toInt() ??
-            defaultScheduleReminderMinutesBefore;
+        defaultScheduleReminderMinutesBefore;
     final int settlementReminderDelayHours =
         (data['settlementReminderDelayHours'] as num?)?.toInt() ??
-            defaultSettlementReminderDelayHours;
+        defaultSettlementReminderDelayHours;
     final int inactiveReminderDays =
         (data['inactiveReminderDays'] as num?)?.toInt() ??
-            defaultInactiveReminderDays;
+        defaultInactiveReminderDays;
 
     final DateTime nextScheduleReminderAt = confirmedDateTime.subtract(
       Duration(minutes: scheduleReminderMinutesBefore),
@@ -273,8 +268,9 @@ class MeetingService {
       Duration(days: inactiveReminderDays),
     );
 
-    final DocumentReference<Map<String, dynamic>> notificationRef =
-        meetingRef.collection('notifications').doc('schedule-confirmed');
+    final DocumentReference<Map<String, dynamic>> notificationRef = meetingRef
+        .collection('notifications')
+        .doc('schedule-confirmed');
 
     final WriteBatch batch = _db.batch();
 
@@ -288,17 +284,12 @@ class MeetingService {
 
       // 리마인드 설정 및 다음 실행 예정 시각
       'reminderEnabled': reminderEnabled,
-      'scheduleReminderMinutesBefore':
-          scheduleReminderMinutesBefore,
-      'settlementReminderDelayHours':
-          settlementReminderDelayHours,
+      'scheduleReminderMinutesBefore': scheduleReminderMinutesBefore,
+      'settlementReminderDelayHours': settlementReminderDelayHours,
       'inactiveReminderDays': inactiveReminderDays,
-      'nextScheduleReminderAt':
-          Timestamp.fromDate(nextScheduleReminderAt),
-      'settlementReminderAt':
-          Timestamp.fromDate(settlementReminderAt),
-      'nextInactiveReminderAt':
-          Timestamp.fromDate(nextInactiveReminderAt),
+      'nextScheduleReminderAt': Timestamp.fromDate(nextScheduleReminderAt),
+      'settlementReminderAt': Timestamp.fromDate(settlementReminderAt),
+      'nextInactiveReminderAt': Timestamp.fromDate(nextInactiveReminderAt),
 
       // 일정을 다시 확정하면 발송·정산 상태 초기화
       'scheduleReminderSent': false,
@@ -317,22 +308,19 @@ class MeetingService {
     });
 
     // 동일 모임의 확정 일정 알림은 한 문서를 갱신하여 중복 방지
-    batch.set(
-      notificationRef,
-      {
-        'type': 'schedule',
-        'title': '🗓 모임 일정이 확정되었습니다',
-        'message':
-            '$meetingTitle · ${_formatDateTime(confirmedDateTime)} · ${placeName.trim()}',
-        'meetingId': meetingId,
-        'meetingTitle': meetingTitle,
-        'targetUids': participants,
-        'readBy': <String>[],
-        'createdByUid': user.uid,
-        'createdAt': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
+    batch.set(notificationRef, {
+      'type': 'schedule',
+      'title': '🗓 모임 일정이 확정되었습니다',
+      'message':
+          '$meetingTitle · ${_formatDateTime(confirmedDateTime)} · ${placeName.trim()}',
+      'meetingId': meetingId,
+      'meetingTitle': meetingTitle,
+      'meetingEmoji': meetingEmoji,
+      'targetUids': participants,
+      'readBy': <String>[],
+      'createdByUid': user.uid,
+      'createdAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
 
     await batch.commit();
 

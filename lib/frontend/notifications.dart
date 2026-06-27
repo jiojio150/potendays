@@ -3,15 +3,14 @@ import 'package:flutter/material.dart';
 
 import '../models/app_notification_model.dart';
 import '../services/notification_service.dart';
-import 'settlement.dart';
+import 'notification_router.dart';
 
 // 알림 센터 — REQ-F-09
 // Firestore에 저장된 앱 내부 알림을 현재 Firebase 사용자 기준으로 조회
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
 
-  static final NotificationService _notificationService =
-      NotificationService();
+  static final NotificationService _notificationService = NotificationService();
 
   @override
   Widget build(BuildContext context) {
@@ -32,8 +31,7 @@ class NotificationsScreen extends StatelessWidget {
                       ),
                     )
                   : StreamBuilder<List<AppNotificationModel>>(
-                      stream:
-                          _notificationService.watchMyNotifications(),
+                      stream: _notificationService.watchMyNotifications(),
                       builder: (context, snapshot) {
                         if (snapshot.connectionState ==
                             ConnectionState.waiting) {
@@ -116,10 +114,7 @@ class NotificationsScreen extends StatelessWidget {
                   message: notification.message,
                   time: _formatTime(notification.createdAt),
                   isRead: notification.isReadBy(uid),
-                  onTap: () => _openNotification(
-                    context,
-                    notification,
-                  ),
+                  onTap: () => _openNotification(context, notification),
                 ),
               ),
             ),
@@ -137,24 +132,13 @@ class NotificationsScreen extends StatelessWidget {
 
     if (!context.mounted) return;
 
-    if (notification.type == AppNotificationType.settlement &&
-        notification.meetingId.isNotEmpty) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => SettlementScreen(
-            meetingId: notification.meetingId,
-            meetingTitle: notification.meetingTitle,
-          ),
-        ),
-      );
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('이 알림의 연결 화면은 추후 구현 예정입니다.'),
-      ),
+    await NotificationRouter.open(
+      context,
+      type: notification.type,
+      meetingId: notification.meetingId,
+      meetingTitle: notification.meetingTitle,
+      meetingEmoji: notification.meetingEmoji,
+      settlementId: notification.settlementId,
     );
   }
 
@@ -183,8 +167,11 @@ class NotificationsScreen extends StatelessWidget {
 
     final DateTime now = DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
-    final DateTime date =
-        DateTime(createdAt.year, createdAt.month, createdAt.day);
+    final DateTime date = DateTime(
+      createdAt.year,
+      createdAt.month,
+      createdAt.day,
+    );
 
     final int difference = today.difference(date).inDays;
     if (difference == 0) return '오늘';

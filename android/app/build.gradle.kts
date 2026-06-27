@@ -19,7 +19,7 @@ if (localPropertiesFile.exists()) {
 android {
     namespace = "com.example.potendays"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
@@ -42,6 +42,8 @@ android {
 
         manifestPlaceholders["MAPS_API_KEY"] =
             localProperties.getProperty("MAPS_API_KEY", "")
+        manifestPlaceholders["KAKAO_NATIVE_APP_KEY"] =
+            localProperties.getProperty("KAKAO_NATIVE_APP_KEY", "")
     }
 
     buildTypes {

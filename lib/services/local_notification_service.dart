@@ -1,12 +1,17 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../app_navigator.dart';
+import '../frontend/notification_router.dart';
+import '../models/app_notification_model.dart';
 
 /// Blaze/Cloud Functions 없이 각 기기에서 모임 리마인드를 예약한다.
 ///
@@ -15,13 +20,11 @@ import '../app_navigator.dart';
 class LocalNotificationService {
   LocalNotificationService._();
 
-  static final LocalNotificationService instance =
-      LocalNotificationService._();
+  static final LocalNotificationService instance = LocalNotificationService._();
 
   static const String channelId = 'potendays_reminders';
   static const String channelName = 'Poten Day 리마인드';
-  static const String channelDescription =
-      '모임 일정, 정산 및 장기간 미모임 리마인드';
+  static const String channelDescription = '모임 일정, 정산 및 장기간 미모임 리마인드';
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -44,8 +47,7 @@ class LocalNotificationService {
     tz.initializeTimeZones();
 
     try {
-      final TimezoneInfo currentZone =
-          await FlutterTimezone.getLocalTimezone();
+      final TimezoneInfo currentZone = await FlutterTimezone.getLocalTimezone();
       tz.setLocalLocation(tz.getLocation(currentZone.identifier));
     } catch (error) {
       // 한국에서 실행하는 프로젝트이므로 기기 시간대 조회 실패 시 서울로 대체한다.
@@ -58,10 +60,10 @@ class LocalNotificationService {
 
     const DarwinInitializationSettings darwinSettings =
         DarwinInitializationSettings(
-      requestAlertPermission: false,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
-    );
+          requestAlertPermission: false,
+          requestBadgePermission: false,
+          requestSoundPermission: false,
+        );
 
     const InitializationSettings settings = InitializationSettings(
       android: androidSettings,
@@ -76,7 +78,8 @@ class LocalNotificationService {
 
     await _plugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.createNotificationChannel(
           const AndroidNotificationChannel(
             channelId,
@@ -96,7 +99,8 @@ class LocalNotificationService {
     if (defaultTargetPlatform == TargetPlatform.android) {
       return await _plugin
               .resolvePlatformSpecificImplementation<
-                  AndroidFlutterLocalNotificationsPlugin>()
+                AndroidFlutterLocalNotificationsPlugin
+              >()
               ?.requestNotificationsPermission() ??
           false;
     }
@@ -104,24 +108,18 @@ class LocalNotificationService {
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       return await _plugin
               .resolvePlatformSpecificImplementation<
-                  IOSFlutterLocalNotificationsPlugin>()
-              ?.requestPermissions(
-                alert: true,
-                badge: true,
-                sound: true,
-              ) ??
+                IOSFlutterLocalNotificationsPlugin
+              >()
+              ?.requestPermissions(alert: true, badge: true, sound: true) ??
           false;
     }
 
     if (defaultTargetPlatform == TargetPlatform.macOS) {
       return await _plugin
               .resolvePlatformSpecificImplementation<
-                  MacOSFlutterLocalNotificationsPlugin>()
-              ?.requestPermissions(
-                alert: true,
-                badge: true,
-                sound: true,
-              ) ??
+                MacOSFlutterLocalNotificationsPlugin
+              >()
+              ?.requestPermissions(alert: true, badge: true, sound: true) ??
           false;
     }
 
@@ -165,7 +163,10 @@ class LocalNotificationService {
       title: '🗓 모임 일정이 다가오고 있어요',
       body: '$meetingTitle 일정이 곧 시작됩니다.',
       scheduledAt: scheduleAt,
-      payload: meetingId,
+      payload: NotificationRouter.payload(
+        type: AppNotificationType.schedule,
+        meetingId: meetingId,
+      ),
     );
 
     if (!settlementCompleted) {
@@ -174,7 +175,10 @@ class LocalNotificationService {
         title: '💳 정산 내역을 확인해 주세요',
         body: '$meetingTitle 모임의 정산이 필요한지 확인해 주세요.',
         scheduledAt: settlementAt,
-        payload: meetingId,
+        payload: NotificationRouter.payload(
+          type: AppNotificationType.settlement,
+          meetingId: meetingId,
+        ),
       );
     }
 
@@ -183,7 +187,10 @@ class LocalNotificationService {
       title: '👋 다음 모임을 만들어 볼까요?',
       body: '$meetingTitle 모임 이후 새로운 일정이 등록되지 않았어요.',
       scheduledAt: inactiveAt,
-      payload: meetingId,
+      payload: NotificationRouter.payload(
+        type: AppNotificationType.reminder,
+        meetingId: meetingId,
+      ),
     );
   }
 
@@ -202,9 +209,7 @@ class LocalNotificationService {
       await requestPermissions();
     }
 
-    await _plugin.cancel(
-      id: _notificationId(meetingId, 'inactive'),
-    );
+    await _plugin.cancel(id: _notificationId(meetingId, 'inactive'));
 
     if (!enabled) return;
 
@@ -213,7 +218,10 @@ class LocalNotificationService {
       title: '👋 모임 일정을 정해 볼까요?',
       body: '$meetingTitle 모임의 날짜와 장소를 정해 주세요.',
       scheduledAt: scheduledAt,
-      payload: meetingId,
+      payload: NotificationRouter.payload(
+        type: AppNotificationType.reminder,
+        meetingId: meetingId,
+      ),
     );
   }
 
@@ -283,24 +291,23 @@ class LocalNotificationService {
     if (confirmedDateTime != null) {
       final DateTime scheduleAt =
           (data['nextScheduleReminderAt'] as Timestamp?)?.toDate() ??
-              confirmedDateTime.subtract(
-                Duration(minutes: scheduleMinutesBefore),
-              );
+          confirmedDateTime.subtract(Duration(minutes: scheduleMinutesBefore));
       final DateTime settlementAt =
           (data['settlementReminderAt'] as Timestamp?)?.toDate() ??
-              confirmedDateTime.add(
-                Duration(hours: settlementDelayHours),
-              );
+          confirmedDateTime.add(Duration(hours: settlementDelayHours));
       final DateTime inactiveAt =
           (data['nextInactiveReminderAt'] as Timestamp?)?.toDate() ??
-              confirmedDateTime.add(Duration(days: inactiveDays));
+          confirmedDateTime.add(Duration(days: inactiveDays));
 
       await _scheduleIfFuture(
         id: _notificationId(meetingId, 'schedule'),
         title: '🗓 모임 일정이 다가오고 있어요',
         body: '$meetingTitle 일정이 곧 시작됩니다.',
         scheduledAt: scheduleAt,
-        payload: meetingId,
+        payload: NotificationRouter.payload(
+          type: AppNotificationType.schedule,
+          meetingId: meetingId,
+        ),
       );
 
       if (!settlementCompleted) {
@@ -309,7 +316,10 @@ class LocalNotificationService {
           title: '💳 정산 내역을 확인해 주세요',
           body: '$meetingTitle 모임의 정산이 필요한지 확인해 주세요.',
           scheduledAt: settlementAt,
-          payload: meetingId,
+          payload: NotificationRouter.payload(
+            type: AppNotificationType.settlement,
+            meetingId: meetingId,
+          ),
         );
       }
 
@@ -318,14 +328,17 @@ class LocalNotificationService {
         title: '👋 다음 모임을 만들어 볼까요?',
         body: '$meetingTitle 모임 이후 새로운 일정이 등록되지 않았어요.',
         scheduledAt: inactiveAt,
-        payload: meetingId,
+        payload: NotificationRouter.payload(
+          type: AppNotificationType.reminder,
+          meetingId: meetingId,
+        ),
       );
 
       return;
     }
 
-    final DateTime? inactiveAt =
-        (data['nextInactiveReminderAt'] as Timestamp?)?.toDate();
+    final DateTime? inactiveAt = (data['nextInactiveReminderAt'] as Timestamp?)
+        ?.toDate();
 
     if (inactiveAt != null) {
       await _scheduleIfFuture(
@@ -333,7 +346,10 @@ class LocalNotificationService {
         title: '👋 모임 일정을 정해 볼까요?',
         body: '$meetingTitle 모임의 날짜와 장소를 정해 주세요.',
         scheduledAt: inactiveAt,
-        payload: meetingId,
+        payload: NotificationRouter.payload(
+          type: AppNotificationType.reminder,
+          meetingId: meetingId,
+        ),
       );
     }
   }
@@ -374,7 +390,14 @@ class LocalNotificationService {
   }
 
   void _handleNotificationTap(NotificationResponse response) {
-    appNavigatorKey.currentState?.pushNamed('/notifications');
+    final BuildContext? context = appNavigatorKey.currentContext;
+
+    if (context == null || response.payload?.trim().isNotEmpty != true) {
+      appNavigatorKey.currentState?.pushNamed('/notifications');
+      return;
+    }
+
+    unawaited(NotificationRouter.openPayload(context, response.payload));
   }
 
   /// String.hashCode는 실행마다 달라질 수 있으므로 고정된 FNV-1a 해시를 사용한다.
